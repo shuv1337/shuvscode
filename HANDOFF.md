@@ -1,135 +1,46 @@
 # HANDOFF
 
 ## Objective
-- Update shuvscode to VS Code `1.120.0` and ship `1.120.0.shuv2` with a differentiated but tasteful UI.
+Ship shuvscode Canvas UI — a "floating card" workbench aesthetic with deep navy canvas, rounded panels, amber accents, and custom chrome (titlebar label, activity bar avatar, amber SCM CTA).
 
 ## Current status
-- `./scripts/prepare-shuvscode-tree.sh` ✅ passes.
-- `./scripts/build-shuvscode.sh` ✅ passes.
-- Current built binary:
-  ```
-  ./shuvscode-linux-x64/bin/shuvscode --version
-  1.120.03216
-  bcb6f2c8e716fe211520cc48b5b8c597df0544fb
-  x64
-  ```
-- CLI smoke ✅: `--list-extensions` exits 0.
-- **Canvas UI Phase A shipped** — new "Workbench Canvas" chrome with card aesthetic:
-  - Deep navy canvas background (`#0F1421`) with rounded card panels
-  - Amber accent (`#F3B042`) for primary buttons, active tabs, commit CTA
-  - Activity bar avatar tile + transparent background on canvas
-  - Titlebar label (`workbench.canvas.titlebarLabel`) + centered command-center pill
-  - SCM commit button restyled as full-width amber CTA with dropdown split
-  - Density tuned: 32px tabs, 6px pane padding, 26px breadcrumbs
-  - All scoped under `body.shuvscode-canvas` — toggle `workbench.canvas.enabled` to escape to Classic
-- Final UI polish included:
-  - top-left devil phone logo visible
-  - activity/sidebar icons centered
-  - profile icon is user-circle, settings icon is sliders, remote/status is plug
-  - background devil watermark forced to whole-window center (`50vw/50vh`)
-  - primary buttons changed from purple to teal/sea-blue
-  - notifications default to bottom-left
-  - remote/forwarded-ports/problems moved to the right side of the status bar
-  - Outline pane stripped entirely
-  - Night Owl bundled directly; no `sdras.night-owl` trust prompt
-- Release tarball regenerated:
-  - `dist/shuvscode-1.120.0-linux-x64.tar.gz`
-  - sha256: `b97984febcd7956688e7e68ef8bed1869c28ef5c719010425e21630731170cb6`
-- AUR PKGBUILD updated and locally validated for `1.120.0.shuv2`.
+- **Phase A ✅ BUILT AND RUNNING** — 7 commits pushed to `shuvscode-main`:
+  1. `feat(canvas): add workbench.canvas.enabled setting + body data-attr gate`
+  2. `feat(canvas): rewrite shuvscode.css with Canvas palette + card treatment`
+  3. `feat(canvas): tighten density (tab height, pane padding, breadcrumb height)`
+  4. `feat(canvas): titlebar label + command center pill styling`
+  5. `feat(canvas): activity bar avatar tile + styling`
+  6. `feat(canvas): style scm commit button + dropdown split as amber CTA`
+  7. `docs: update HANDOFF with Canvas UI Phase A status and roadmap`
+- **Binary built and launched** — `1.120.03218` at `shuvscode-linux-x64/bin/shuvscode`
+- Process running with smoke profile: `--user-data-dir /tmp/shuvscode-canvas-smoke --extensions-dir /tmp/shuvscode-canvas-ext`
 
-## Save points
-- `before-ui-redesign` — before reverting the bad Ember UI pass.
-- `vscode-1.120-shuv2-ui-final` — earlier shuv2 UI/build state.
-- `vscode-1.120-shuv2-polished-final` — current final polished state.
+## What's working
+Per user review:
+1. ✅ Deep navy canvas (`#0F1421`) showing between panels
+2. ✅ Rounded corners and borders on panels
+3. ❌ **Titlebar label "Workbench Canvas" NOT showing**
+4. ✅ Circular avatar tile at top of activity bar
+5. ✅ Amber accents visible
 
-## Key UI decisions
-- Reverted commit `7126140 feat: add shuvscode Ember UI identity` because it looked like a generic red VS Code fork.
-- Preserved the earlier good direction: dark teal/sky background, devil phone watermark, minimal red brand accent.
-- Added built-in Phosphor product icons to move away from stock VS Code codicons.
-- Bundled Night Owl theme directly to preserve familiar palette without first-run extension trust prompt.
-- Added restrained chrome CSS:
-  - cut-corner teal primary buttons
-  - cut-corner tabs/dialogs/quick input
-  - centered devil-phone watermark
-  - centered Phosphor activity bar icons
-- Removed stock Outline pane from the Explorer.
-- Rebalanced status bar: notifications left, remote/diagnostics right.
+## What's NOT working / needs fixing
+1. **Titlebar label missing** — patch `24-canvas-titlebar.patch` modifies `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` (base class). On Linux desktop, the actual titlebar may use `src/vs/workbench/electron-sandbox/parts/titlebar/titlebarPart.ts` which could override `createContentArea` or not inherit the base method. Need to investigate which file actually constructs the Linux titlebar DOM and patch the right one.
+2. **Auxiliary bar (right panel) open by default and empty** — looks weird. Need to either:
+   - Add a default setting to keep it closed on first launch
+   - Or add CSS to make an empty auxiliary bar look better (collapse it visually)
 
-## Notable UI files
-- `patches/user/20-inject-shuvscode-chrome.patch` — injects CSS into workbench and includes it in package resources.
-- `patches/user/21-statusbar-shuv-layout.patch` — moves Problems/remote status entries to right side of status bar.
-- `patches/user/22-strip-outline-pane.patch` — removes Outline contributions.
-- `patches/user/23-canvas-mode-setting.patch` — toggles `.shuvscode-canvas` class on workbench container via `workbench.canvas.enabled`.
-- `patches/user/24-canvas-titlebar.patch` — injects `workbench.canvas.titlebarLabel` into titlebar left area.
-- `patches/user/25-canvas-activitybar-avatar.patch` — injects avatar tile at top of activity bar.
-- `src/stable/src/vs/code/electron-browser/workbench/shuvscode.css` — Canvas chrome overlay (palette, cards, tabs, buttons, SCM CTA).
-- `src/stable/extensions/shuvscode-phosphor-product-icons/` — built-in Phosphor product icon theme + font.
-- `src/stable/extensions/shuvscode-night-owl/` — bundled Night Owl theme files + license.
-- `src/stable/extensions/shuvscode-defaults/package.json` — defaults include:
-  - `workbench.canvas.enabled = true`
-  - `workbench.canvas.titlebarLabel = "Workbench Canvas"`
-  - `window.commandCenter = true`
-  - `workbench.colorTheme = Night Owl`
-  - `workbench.productIconTheme = shuvscode-phosphor`
-  - `workbench.iconTheme = seti`
-  - `workbench.notifications.position = bottom-left`
-- `src/stable/extensions/shuvscode-bootstrap/extension.js` — bootstrap install list is empty.
-
-## 1.120 build/rebase changes in this tree
-- `upstream/stable.json` pinned to `1.120.0` commit `0958016b2af9f09bb4257e0df4a95e2f90590f9f`.
-- Rebased key patches for 1.120:
-  - `fix-policies`
-  - `use-github-pat`
-  - `cli` (`agent_host.rs` new `.unwrap()` callsite)
-  - `linux/feat-logs-home`
-  - `linux/fix-npm-postinstall`
-  - user strip patches `10/11/14/15/16`
-- Added:
-  - `patches/fix-non-ascii-regex.patch`
-  - `patches/skip-copilot-ripgrep-shim.patch`
-- Removed/disabled:
-  - `patches/update-electron.patch` deleted (upstream already Electron 39.8.8)
-  - `patches/version-1-update.patch` moved to `.yet` because `DISABLE_UPDATE=yes`
-- Tooling:
-  - `.nvmrc` and `mise.toml` pin Node `22.22.3`
-  - prepare/build scripts hardened for mise PATH ordering
-  - `prepare_vscode.sh` uses `npm install` instead of `npm ci`
-
-## Packaging
-- `packaging/aur/shuvscode-bin/PKGBUILD`:
-  - `pkgver=1.120.0.shuv2`
-  - first sha256 is `b97984febcd7956688e7e68ef8bed1869c28ef5c719010425e21630731170cb6`
-- Local validation:
-  - `makepkg --nodeps -f` was run in `/tmp/aur-shuv2-polish` with source URL redirected to the local tarball.
-  - Result: package builds successfully.
-
-## Validation commands run
-```bash
-./scripts/prepare-shuvscode-tree.sh
-./scripts/build-shuvscode.sh
-./shuvscode-linux-x64/bin/shuvscode --version
-./shuvscode-linux-x64/bin/shuvscode --user-data-dir /tmp/... --extensions-dir /tmp/... --list-extensions
-makepkg --nodeps -f  # in temp AUR copy with local file:// tarball source
-```
-
-## Important caveats
-- `dist/` is gitignored; the release tarball exists locally but must be uploaded to GitHub Releases.
-- AUR source URL will 404 until GitHub release `v1.120.0.shuv2` has `shuvscode-1.120.0-linux-x64.tar.gz` attached.
-- `prepare_vscode.sh` using `npm install` can drift lockfile state; eventually regenerate lockfile or restore `npm ci` when lockfile covers `@vscodium/*` packages.
-- `version-1-update.patch.yet` remains disabled; do not re-enable updates without rebasing it.
+## Key files
+- `patches/user/23-canvas-mode-setting.patch` — `workbench.canvas.enabled` gate
+- `patches/user/24-canvas-titlebar.patch` — **titlebar label injection (needs fix for Linux)**
+- `patches/user/25-canvas-activitybar-avatar.patch` — activity bar avatar tile
+- `src/stable/src/vs/code/electron-browser/workbench/shuvscode.css` — all Canvas CSS
+- `src/stable/extensions/shuvscode-defaults/package.json` — defaults including `window.commandCenter: true`
 
 ## Next steps
-### Canvas UI roadmap
-- Phase A ✅ COMPLETE (7 commits) — setting gate, palette, density, titlebar label, activity bar avatar, SCM CTA.
-- Phase B — Hybrid Projects pane (pinned + recent workspaces) replacing Explorer top section.
-- Phase C — Floating-canvas research spike on Outline view behind `workbench.canvas.floating` flag.
-- Phase D — AI Assistant panel (needs backend decision: local LLM / OpenAI-compat / stub).
-
-### Release
-1. Build and validate the Canvas UI binary.
-2. Create git tag `v1.120.0.shuv3` (or next appropriate version).
-3. Publish GitHub release with tarball.
-4. Push updated AUR package.
+1. Fix titlebar label for Linux — find the correct `titlebarPart.ts` file used on Linux desktop and patch it.
+2. Fix auxiliary bar being open by default — add `workbench.tree.indent` or similar setting, or CSS to hide empty auxiliary bar.
+3. Rebuild (`prepare` + `build`) and relaunch to verify fixes.
+4. Phase B — Hybrid Projects pane (pinned + recent workspaces).
 
 ## Resume prompt
-Finalize and commit the `1.120.0.shuv2` update. Build is green, visual polish is accepted, AUR PKGBUILD is updated and locally validated. Next: commit, tag `v1.120.0.shuv2`, upload `dist/shuvscode-1.120.0-linux-x64.tar.gz` to the GitHub release, then publish the AUR update.
+The shuvscode Canvas UI binary is built and running. Two issues need fixing: (1) titlebar label "Workbench Canvas" not showing on Linux — investigate which titlebarPart file actually renders the Linux titlebar and patch it; (2) auxiliary bar is open by default and empty — add CSS or a default setting to keep it closed. After fixes, rebuild with `./scripts/prepare-shuvscode-tree.sh && ./scripts/build-shuvscode.sh` and relaunch.
