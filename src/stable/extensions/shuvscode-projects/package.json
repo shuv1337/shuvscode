@@ -1,0 +1,215 @@
+{
+  "name": "shuvscode-projects",
+  "displayName": "shuvscode Projects",
+  "description": "Native project switcher for shuvscode.",
+  "version": "0.1.0",
+  "publisher": "shuvscode",
+  "engines": {
+    "vscode": "*"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:shuvscodeProjects.projects",
+    "onCommand:shuvscodeProjects.saveProject",
+    "onCommand:shuvscodeProjects.editProjects",
+    "onCommand:shuvscodeProjects.openProject",
+    "onCommand:shuvscodeProjects.openProjectInNewWindow"
+  ],
+  "main": "./extension.js",
+  "extensionKind": [
+    "ui"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "shuvscode-projects",
+          "title": "Projects",
+          "icon": "$(folder-library)"
+        }
+      ]
+    },
+    "views": {
+      "shuvscode-projects": [
+        {
+          "id": "shuvscodeProjects.projects",
+          "name": "Projects"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "shuvscodeProjects.projects",
+        "contents": "Save this workspace or configure base folders to start switching between projects.\n[Save Project](command:shuvscodeProjects.saveProject)\n[Open Settings](command:workbench.action.openSettings?%5B%22shuvscode.projects%22%5D)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "shuvscodeProjects.saveProject",
+        "title": "Save Project",
+        "category": "Projects",
+        "icon": "$(add)"
+      },
+      {
+        "command": "shuvscodeProjects.editProjects",
+        "title": "Edit Projects",
+        "category": "Projects",
+        "icon": "$(json)"
+      },
+      {
+        "command": "shuvscodeProjects.openProject",
+        "title": "List Projects to Open",
+        "category": "Projects",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "shuvscodeProjects.openProjectInNewWindow",
+        "title": "List Projects to Open in New Window",
+        "category": "Projects",
+        "icon": "$(empty-window)"
+      },
+      {
+        "command": "shuvscodeProjects.refresh",
+        "title": "Refresh Projects",
+        "category": "Projects",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "shuvscodeProjects.removeProject",
+        "title": "Remove Project",
+        "category": "Projects",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "shuvscodeProjects.revealProjectFile",
+        "title": "Reveal Projects File",
+        "category": "Projects",
+        "icon": "$(go-to-file)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "shuvscodeProjects.refresh",
+          "when": "false"
+        },
+        {
+          "command": "shuvscodeProjects.removeProject",
+          "when": "false"
+        },
+        {
+          "command": "shuvscodeProjects.revealProjectFile",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "shuvscodeProjects.saveProject",
+          "when": "view == shuvscodeProjects.projects",
+          "group": "navigation@1"
+        },
+        {
+          "command": "shuvscodeProjects.refresh",
+          "when": "view == shuvscodeProjects.projects",
+          "group": "navigation@2"
+        },
+        {
+          "command": "shuvscodeProjects.editProjects",
+          "when": "view == shuvscodeProjects.projects",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "shuvscodeProjects.openProject",
+          "when": "view == shuvscodeProjects.projects && viewItem =~ /project/",
+          "group": "inline@1"
+        },
+        {
+          "command": "shuvscodeProjects.openProjectInNewWindow",
+          "when": "view == shuvscodeProjects.projects && viewItem =~ /project/",
+          "group": "inline@2"
+        },
+        {
+          "command": "shuvscodeProjects.removeProject",
+          "when": "view == shuvscodeProjects.projects && viewItem == projectFavorite",
+          "group": "navigation@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "shuvscode Projects",
+      "properties": {
+        "shuvscode.projects.baseFolders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "$home/repos",
+            "$home/projects",
+            "$home/code",
+            "$home/src"
+          ],
+          "description": "Folders scanned for Git repositories. Supports ~ and $home."
+        },
+        "shuvscode.projects.ignoredFolders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "node_modules",
+            ".cache",
+            ".git",
+            "dist",
+            "out",
+            "target"
+          ],
+          "description": "Folder names ignored while scanning base folders."
+        },
+        "shuvscode.projects.maxDepthRecursion": {
+          "type": "number",
+          "default": 4,
+          "minimum": 0,
+          "maximum": 12,
+          "description": "Maximum folder depth for Git project discovery."
+        },
+        "shuvscode.projects.sortList": {
+          "type": "string",
+          "enum": [
+            "Saved",
+            "Name",
+            "Path",
+            "Recent"
+          ],
+          "default": "Name",
+          "description": "Sort order for project lists."
+        },
+        "shuvscode.projects.groupList": {
+          "type": "boolean",
+          "default": true,
+          "description": "Group projects by Favorites and auto-detected Git repositories."
+        },
+        "shuvscode.projects.checkInvalidPathsBeforeListing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mark saved projects whose paths no longer exist."
+        },
+        "shuvscode.projects.showProjectNameInStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the current project in the status bar."
+        },
+        "shuvscode.projects.projectsLocation": {
+          "type": "string",
+          "default": "",
+          "description": "Optional folder for projects.json. Supports ~ and $home."
+        }
+      }
+    }
+  }
+}

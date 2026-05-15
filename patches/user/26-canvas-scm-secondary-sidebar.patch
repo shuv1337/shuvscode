@@ -1,0 +1,13 @@
+Move Source Control into the secondary sidebar by default for the shuvscode
+Canvas layout.
+
+diff --git a/src/vs/workbench/contrib/scm/browser/scm.contribution.ts b/src/vs/workbench/contrib/scm/browser/scm.contribution.ts
+--- a/src/vs/workbench/contrib/scm/browser/scm.contribution.ts
++++ b/src/vs/workbench/contrib/scm/browser/scm.contribution.ts
+@@ -62,5 +62,5 @@ const viewContainer = Registry.as<IViewContainersRegistry>(ViewContainerExtensio
+ 	order: 2,
+ 	hideIfEmpty: true,
+-}, ViewContainerLocation.Sidebar, { doNotRegisterOpenCommand: true });
++}, ViewContainerLocation.AuxiliaryBar, { doNotRegisterOpenCommand: true });
+ 
+ const viewsRegistry = Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry);

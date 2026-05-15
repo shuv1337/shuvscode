@@ -1,46 +1,56 @@
 # HANDOFF
 
 ## Objective
-Ship shuvscode Canvas UI — a "floating card" workbench aesthetic with deep navy canvas, rounded panels, amber accents, and custom chrome (titlebar label, activity bar avatar, amber SCM CTA).
+- Continue polishing the shuvscode Canvas UI and add a native Project Manager-style workflow.
+- Latest completed fixes: move Source Control into the secondary sidebar by default, fix the clipped bottom status bar, strengthen amber active-state accents, and add native Projects at the top of the primary activity bar.
 
 ## Current status
-- **Phase A ✅ BUILT AND RUNNING** — 7 commits pushed to `shuvscode-main`:
-  1. `feat(canvas): add workbench.canvas.enabled setting + body data-attr gate`
-  2. `feat(canvas): rewrite shuvscode.css with Canvas palette + card treatment`
-  3. `feat(canvas): tighten density (tab height, pane padding, breadcrumb height)`
-  4. `feat(canvas): titlebar label + command center pill styling`
-  5. `feat(canvas): activity bar avatar tile + styling`
-  6. `feat(canvas): style scm commit button + dropdown split as amber CTA`
-  7. `docs: update HANDOFF with Canvas UI Phase A status and roadmap`
-- **Binary built and launched** — `1.120.03218` at `shuvscode-linux-x64/bin/shuvscode`
-- Process running with smoke profile: `--user-data-dir /tmp/shuvscode-canvas-smoke --extensions-dir /tmp/shuvscode-canvas-ext`
+- Done: rebuilt `shuvscode-linux-x64/bin/shuvscode` after the native Projects and activity-bar order changes.
+- Version smoke passes: `1.120.03242`, commit `a6a603d13827683767ea05de79c10e06311c8351`, `x64`.
+- App launched with a fresh smoke profile:
+  `--user-data-dir /tmp/shuvscode-projects-top-user-data --extensions-dir /tmp/shuvscode-projects-top-extensions --new-window --disable-gpu`
+- Fresh-profile storage confirms:
+  - `workbench.view.extension.shuvscode-projects` is first in `workbench.activity.pinnedViewlets2` with `order: -10`.
+  - Explorer remains next with `order: 0`.
+  - `shuvscodeProjects.projects` is visible in the Projects container.
+  - `workbench.view.scm` is pinned in `workbench.auxiliarybar.pinnedPanels`.
+  - `workbench.auxiliaryBar.empty` is `false`.
 
-## What's working
-Per user review:
-1. ✅ Deep navy canvas (`#0F1421`) showing between panels
-2. ✅ Rounded corners and borders on panels
-3. ❌ **Titlebar label "Workbench Canvas" NOT showing**
-4. ✅ Circular avatar tile at top of activity bar
-5. ✅ Amber accents visible
+## Key changes
+- `src/stable/extensions/shuvscode-projects/`
+  - Adds a native built-in Projects extension with a primary activity-bar container and tree view.
+  - Provides commands to save the current project, edit `projects.json`, list/open projects, open in a new window, refresh, remove saved favorites, and reveal the projects file.
+  - Stores saved projects in extension global storage as `projects.json`.
+  - Auto-detects Git repositories from configurable base folders and ignores common heavy folders.
+  - Shows the current project in the status bar without doing a full discovery scan at startup.
+- `patches/user/27-shuvscode-projects-top-activitybar.patch`
+  - Assigns the native Projects container activity-bar order `-10` so it appears above Explorer by default.
+- `patches/user/26-canvas-scm-secondary-sidebar.patch`
+  - Registers the SCM view container in `ViewContainerLocation.AuxiliaryBar`.
+- `src/stable/extensions/shuvscode-defaults/package.json`
+  - Adds `"workbench.secondarySideBar.defaultVisibility": "visible"`.
+- `src/stable/extensions/shuvscode-bootstrap/extension.js`
+  - Opens `workbench.view.scm` once on startup via `shuvscode.canvas.scmAuxiliaryOpened`.
+- `src/stable/src/vs/code/electron-browser/workbench/shuvscode.css`
+  - Fixes the status bar clipping and uses stronger amber active states for primary activity bar icons.
 
-## What's NOT working / needs fixing
-1. **Titlebar label missing** — patch `24-canvas-titlebar.patch` modifies `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` (base class). On Linux desktop, the actual titlebar may use `src/vs/workbench/electron-sandbox/parts/titlebar/titlebarPart.ts` which could override `createContentArea` or not inherit the base method. Need to investigate which file actually constructs the Linux titlebar DOM and patch the right one.
-2. **Auxiliary bar (right panel) open by default and empty** — looks weird. Need to either:
-   - Add a default setting to keep it closed on first launch
-   - Or add CSS to make an empty auxiliary bar look better (collapse it visually)
+## Validation
+- `node --check src/stable/extensions/shuvscode-projects/extension.js` passed.
+- `jq . src/stable/extensions/shuvscode-projects/package.json >/dev/null` passed.
+- `./scripts/prepare-shuvscode-tree.sh && ./scripts/build-shuvscode.sh` completed successfully.
+- `./shuvscode-linux-x64/bin/shuvscode --version` returned `1.120.03242`.
+- Built artifacts contain `shuvscode-linux-x64/resources/app/extensions/shuvscode-projects/`.
+- Fresh-profile launch is running as PID `1035280`.
+- Fresh-profile storage confirms Projects is pinned first in the primary activity bar.
 
-## Key files
-- `patches/user/23-canvas-mode-setting.patch` — `workbench.canvas.enabled` gate
-- `patches/user/24-canvas-titlebar.patch` — **titlebar label injection (needs fix for Linux)**
-- `patches/user/25-canvas-activitybar-avatar.patch` — activity bar avatar tile
-- `src/stable/src/vs/code/electron-browser/workbench/shuvscode.css` — all Canvas CSS
-- `src/stable/extensions/shuvscode-defaults/package.json` — defaults including `window.commandCenter: true`
+## Important context
+- Do not use `shuvcode`; this project is `shuvscode`.
+- Existing unrelated untracked file before this work: `PLAN-canvas-ui.md`.
+- Older known issue still not addressed in this pass: titlebar label `"Workbench Canvas"` may still be missing on Linux.
+- The new native Projects feature intentionally clones the Project Manager behavior surface without copying its GPL-3.0 implementation.
 
 ## Next steps
-1. Fix titlebar label for Linux — find the correct `titlebarPart.ts` file used on Linux desktop and patch it.
-2. Fix auxiliary bar being open by default — add `workbench.tree.indent` or similar setting, or CSS to hide empty auxiliary bar.
-3. Rebuild (`prepare` + `build`) and relaunch to verify fixes.
-4. Phase B — Hybrid Projects pane (pinned + recent workspaces).
-
-## Resume prompt
-The shuvscode Canvas UI binary is built and running. Two issues need fixing: (1) titlebar label "Workbench Canvas" not showing on Linux — investigate which titlebarPart file actually renders the Linux titlebar and patch it; (2) auxiliary bar is open by default and empty — add CSS or a default setting to keep it closed. After fixes, rebuild with `./scripts/prepare-shuvscode-tree.sh && ./scripts/build-shuvscode.sh` and relaunch.
+1. Visually inspect the running fresh-profile window for Projects at the top of the primary activity bar.
+2. Exercise the Projects commands from the command palette and sidebar title actions.
+3. Decide whether to add tag filtering UI and richer duplicate-name handling in a follow-up.
+4. Address the separate titlebar label issue if it remains a priority.

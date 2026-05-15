@@ -38,6 +38,7 @@
       "git.autofetch": false,
       "window.commandCenter": true,
       "workbench.layoutControl.enabled": false,
+      "workbench.secondarySideBar.defaultVisibility": "visible",
       "breadcrumbs.enabled": false,
       "editor.minimap.enabled": false,
       "editor.stickyScroll.enabled": false,

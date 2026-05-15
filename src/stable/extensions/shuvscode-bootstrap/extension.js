@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 
 const FLAG = 'shuvscode.bootstrapped';
+const CANVAS_SCM_FLAG = 'shuvscode.canvas.scmAuxiliaryOpened';
 
 const EXTENSIONS = [];
 
@@ -9,7 +10,20 @@ async function activate(ctx) {
     .getConfiguration('shuvscode.bootstrap')
     .get('enabled', true);
 
-  if (!enabled || ctx.globalState.get(FLAG)) {
+  if (!enabled) {
+    return;
+  }
+
+  if (!ctx.globalState.get(CANVAS_SCM_FLAG)) {
+    try {
+      await vscode.commands.executeCommand('workbench.view.scm');
+      await ctx.globalState.update(CANVAS_SCM_FLAG, true);
+    } catch {
+      // Non-fatal: keep bootstrap extension install behavior independent.
+    }
+  }
+
+  if (ctx.globalState.get(FLAG)) {
     return;
   }
 

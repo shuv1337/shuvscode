@@ -6,7 +6,9 @@
   --canvas-border-strong: rgba(255, 255, 255, 0.12);
   --canvas-accent: #F3B042;
   --canvas-accent-fg: #1A1410;
+  --canvas-accent-strong: #FFC85F;
   --canvas-accent-soft: rgba(243, 176, 66, 0.14);
+  --canvas-accent-medium: rgba(243, 176, 66, 0.24);
   --canvas-text: #E6EAF2;
   --canvas-text-dim: #8B95A9;
   --canvas-radius: 10px;
@@ -87,17 +89,35 @@
 
 .monaco-workbench.shuvscode-canvas .activitybar .monaco-action-bar .action-label {
   border-radius: 8px;
-  transition: background-color .12s ease-out, color .12s ease-out;
+  color: color-mix(in srgb, var(--canvas-text-dim) 72%, var(--canvas-bg));
+  opacity: .82;
+  transition: background-color .12s ease-out, box-shadow .12s ease-out, color .12s ease-out, opacity .12s ease-out;
 }
 
 .monaco-workbench.shuvscode-canvas .activitybar .monaco-action-bar .action-label:hover {
   background: var(--canvas-accent-soft);
+  color: var(--canvas-accent-strong);
+  opacity: 1;
 }
 
 .monaco-workbench.shuvscode-canvas .activitybar .monaco-action-bar .checked .action-label,
 .monaco-workbench.shuvscode-canvas .activitybar .monaco-action-bar .action-item.checked .action-label {
-  background: var(--canvas-accent-soft);
-  box-shadow: inset 2px 0 0 var(--canvas-accent);
+  background: linear-gradient(90deg, var(--canvas-accent-medium), var(--canvas-accent-soft));
+  color: var(--canvas-accent-strong) !important;
+  opacity: 1;
+  box-shadow:
+    inset 3px 0 0 var(--canvas-accent),
+    inset 0 0 0 1px rgba(243, 176, 66, .16),
+    0 0 18px rgba(243, 176, 66, .18);
+}
+
+.monaco-workbench.shuvscode-canvas .activitybar .monaco-action-bar .checked .action-label::before,
+.monaco-workbench.shuvscode-canvas .activitybar .monaco-action-bar .action-item.checked .action-label::before {
+  color: var(--canvas-accent-strong) !important;
+}
+
+.monaco-workbench.shuvscode-canvas .activitybar .monaco-action-bar .action-item.checked .active-item-indicator::before {
+  background-color: var(--canvas-accent) !important;
 }
 
 .monaco-workbench.shuvscode-canvas .activitybar .accounts-container .action-label,
@@ -142,7 +162,16 @@
 .monaco-workbench.shuvscode-canvas .part.statusbar {
   background: var(--canvas-surface);
   border-top: 1px solid var(--canvas-border);
-  margin-top: var(--canvas-gap);
+  margin-top: 0;
+  box-shadow: 0 calc(-1 * var(--canvas-gap)) 0 var(--canvas-bg);
+}
+
+.monaco-workbench.shuvscode-canvas .part.statusbar .codicon[class*='codicon-'] {
+  font-size: 14px;
+}
+
+.monaco-workbench.shuvscode-canvas .part.statusbar .statusbar-item {
+  align-items: center;
 }
 
 /* Editor tabs: soft rounded, amber active indicator */
