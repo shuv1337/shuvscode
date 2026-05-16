@@ -77,11 +77,35 @@ The built-in Projects extension provides:
 - Git repository discovery from configured base folders
 - a status bar current-project indicator
 - workspace storage in `projects.json`
+- shared `windows.json` registry of open shuvscode windows with Switch-to-Window
+- first-class multiplexer terminal support (zellij, tmux, etc.)
 
 Relevant files:
 
 - `src/stable/extensions/shuvscode-projects/extension.js`
 - `src/stable/extensions/shuvscode-projects/package.json`
+
+### Multiplexer terminals
+
+Projects can launch (or reattach to) a per-project terminal multiplexer
+session. Configure once:
+
+- `shuvscode.projects.multiplexerCommand` — e.g. `zellij attach -c ${projectName}` or `tmux new -A -s ${projectSlug}`
+- `shuvscode.projects.multiplexerTerminalName` — display name template (default `mux: ${projectName}`)
+- `shuvscode.projects.autoOpenMultiplexer` — auto-run on project open (default `false`)
+
+Tokens: `${projectName}` `${projectPath}` `${projectSlug}` `${cwd}`.
+
+Commands:
+
+- `Projects: Open Multiplexer Terminal` from the command palette or the inline
+  action on a project tree item.
+
+Under the hood, patches 28 + 29 keep the pty alive across same-window project
+switches and reload, and on reattach detect alternate-screen TUIs (zellij,
+tmux, neovim, btop, lazygit, …). For those the renderer skips the stale cell
+snapshot and the pty host delivers a real SIGWINCH so the inner process
+redraws from authoritative state instead of being overpainted.
 
 ## Validation
 

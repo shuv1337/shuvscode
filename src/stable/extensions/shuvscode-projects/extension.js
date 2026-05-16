@@ -100,8 +100,19 @@ function activate(ctx) {
         vscode.Uri.file(project.rootPath),
         false
       );
+    }),
+    vscode.commands.registerCommand('shuvscodeProjects.openMultiplexerTerminal', async item => {
+      const project = (item && item.project) || currentProject();
+      await openMultiplexerTerminal(project);
+    }),
+    // Auto-open a project-scoped multiplexer terminal when a project loads,
+    // if the user opted in via shuvscode.projects.autoOpenMultiplexer.
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      maybeAutoOpenMultiplexerTerminal();
     })
   );
+  // Also try once on activation in case the workspace folder was already set.
+  maybeAutoOpenMultiplexerTerminal();
 
   windowRegistry.start();
   updateStatus(status, store);
@@ -613,6 +624,100 @@ function compactPath(value) {
     return `~${value.slice(home.length)}`;
   }
   return value || '';
+}
+
+// --- Multiplexer convenience ---------------------------------------------
+//
+// First-class support for terminal multiplexers (zellij, tmux, etc.). The
+// goal is to make a per-project multiplexer session feel native: one command
+// to open or attach, optionally auto-opened when the project loads.
+//
+// User-facing settings:
+//   shuvscode.projects.multiplexerCommand  string  e.g. "zellij attach -c ${projectName}"
+//   shuvscode.projects.multiplexerTerminalName  string  display name template
+//   shuvscode.projects.autoOpenMultiplexer  bool   auto-run on project open
+//
+// Tokens substituted in the command and terminal name:
+//   ${projectName} ${projectPath} ${projectSlug} ${cwd}
+
+let _autoOpenMultiplexerDone = false;
+
+function multiplexerSlug(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
+}
+
+function substituteMultiplexerTokens(template, project) {
+  if (!template) {
+    return template;
+  }
+  const tokens = {
+    projectName: project && project.name ? project.name : '',
+    projectPath: project && project.rootPath ? project.rootPath : '',
+    projectSlug: multiplexerSlug(project && project.name),
+    cwd: project && project.rootPath ? project.rootPath : ''
+  };
+  return template.replace(/\$\{(projectName|projectPath|projectSlug|cwd)\}/g, (_, key) => tokens[key] || '');
+}
+
+function multiplexerConfig() {
+  return vscode.workspace.getConfiguration('shuvscode.projects');
+}
+
+async function openMultiplexerTerminal(project) {
+  const target = project || currentProject();
+  if (!target || !target.rootPath) {
+    vscode.window.showWarningMessage('Open a project before launching the multiplexer terminal.');
+    return;
+  }
+  const cfg = multiplexerConfig();
+  const rawCommand = cfg.get('multiplexerCommand', '');
+  const command = substituteMultiplexerTokens((rawCommand || '').trim(), target);
+  if (!command) {
+    vscode.window.showInformationMessage(
+      'Set shuvscode.projects.multiplexerCommand (e.g. "zellij attach -c ${projectName}") to launch a multiplexer terminal.'
+    );
+    return;
+  }
+  const nameTemplate = cfg.get('multiplexerTerminalName', 'mux: ${projectName}');
+  const name = substituteMultiplexerTokens(nameTemplate, target) || `mux: ${target.name || ''}`;
+
+  // Reuse an existing terminal with the same name if it's already running.
+  const existing = vscode.window.terminals.find(t => t.name === name);
+  if (existing) {
+    existing.show(true);
+    return;
+  }
+
+  const terminal = vscode.window.createTerminal({
+    name,
+    cwd: target.rootPath
+  });
+  terminal.show(true);
+  // Send the launch command; the multiplexer's own attach/create-or-attach
+  // semantics handle the reattach case (e.g. `zellij attach -c <name>`).
+  terminal.sendText(command, true);
+}
+
+async function maybeAutoOpenMultiplexerTerminal() {
+  if (_autoOpenMultiplexerDone) {
+    return;
+  }
+  const cfg = multiplexerConfig();
+  if (!cfg.get('autoOpenMultiplexer', false)) {
+    return;
+  }
+  if (!(cfg.get('multiplexerCommand', '') || '').trim()) {
+    return;
+  }
+  const project = currentProject();
+  if (!project) {
+    return;
+  }
+  _autoOpenMultiplexerDone = true;
+  // Small delay so xterm/pty are wired up before sendText.
+  setTimeout(() => {
+    openMultiplexerTerminal(project).catch(() => { /* best-effort */ });
+  }, 800);
 }
 
 /**

@@ -1,0 +1,132 @@
+shuvscode: first-class multiplexer support on terminal reattach (v2).
+
+When the persistent-terminal patch (28) keeps a pty alive across a same-window
+project switch or reload, VS Code's replay mechanism serializes the xterm cell
+buffer on the pty host and writes those bytes back into a fresh xterm in the
+renderer. That works for "shell at a prompt" terminals but corrupts the UI of
+any program living on the alternate screen buffer: zellij, tmux, neovim, btop,
+lazygit, etc. The stale snapshot is painted, the running multiplexer is unaware
+its client changed and therefore doesn't redraw, and any subsequent output
+lands on top of the stale frame.
+
+This patch teaches the replay path to detect alternate-buffer terminals and,
+after the renderer has settled into its real layout size, force a real
+SIGWINCH on the pty so the inner foreground process group redraws itself from
+authoritative state. The renderer still runs its normal replay (which is what
+restores xterm modes such as mouse reporting, focus events, and bracketed
+paste) so click handling, scrolling, etc. continue to work.
+
+Mechanics:
+
+  1. Pty host (`XtermSerializer`): tag the replay event with `altBufferActive`
+     by checking `_xterm.buffer.active.type === 'alternate'` at serialize
+     time, and expose a `getCurrentDimensions()` helper that returns the
+     serializer xterm's live cols/rows.
+
+  2. Pty host (`PersistentTerminalProcess.triggerReplay`): after firing the
+     replay event, if `altBufferActive` is true, schedule a delayed SIGWINCH
+     bump (250ms + 50ms restore). At fire time we read the current cols/rows
+     from the serializer (which the renderer has updated via its post-attach
+     `resize()` call), so we don't use the stale recorded background size and
+     squish the multiplexer into a narrow column count.
+
+  3. The replay event interface gains an optional `altBufferActive` flag so
+     older backends and event consumers keep working unchanged.
+
+The renderer (`BasePty.handleReplay`) is intentionally unchanged: the normal
+replay restores xterm mode state (mouse reporting, focus events, bracketed
+paste), and the stale cell paint into the alt buffer is harmless because the
+delayed SIGWINCH triggers a full redraw by the multiplexer moments later.
+
+diff --git i/src/vs/platform/terminal/common/capabilities/capabilities.ts w/src/vs/platform/terminal/common/capabilities/capabilities.ts
+index 5f9d77f6..02f0c8d7 100644
+--- i/src/vs/platform/terminal/common/capabilities/capabilities.ts
++++ w/src/vs/platform/terminal/common/capabilities/capabilities.ts
+@@ -362,4 +362,7 @@ export interface ISerializedCommandDetectionCapability {
+ export interface IPtyHostProcessReplayEvent {
+ 	events: ReplayEntry[];
+ 	commands: ISerializedCommandDetectionCapability;
++	// shuvscode: true when the underlying terminal was on the xterm alternate
++	// screen buffer at serialize time (i.e. running a TUI like zellij/tmux/nvim).
++	altBufferActive?: boolean;
+ }
+diff --git i/src/vs/platform/terminal/node/ptyService.ts w/src/vs/platform/terminal/node/ptyService.ts
+index 2f8d40d6..31239114 100644
+--- i/src/vs/platform/terminal/node/ptyService.ts
++++ w/src/vs/platform/terminal/node/ptyService.ts
+@@ -952,6 +952,35 @@ class PersistentTerminalProcess extends Disposable {
+ 		}
+ 		this._logService.info(`Persistent process "${this._persistentProcessId}": Replaying ${dataLength} chars and ${ev.events.length} size events`);
+ 		this._onProcessReplay.fire(ev);
++		// shuvscode: if the terminal was on the alternate screen buffer (a TUI
++		// like zellij/tmux/nvim), the cell snapshot the renderer just replayed
++		// is stale and the foreground process is unaware its client changed.
++		// After the renderer has settled into its real layout size, force a
++		// SIGWINCH on the pty by bumping the size by one row and restoring it.
++		// We read cols/rows from the serializer at fire time so we use the
++		// renderer's current dimensions (set via resize() after replay), not
++		// the stale recorded dimensions baked into the replay event. The 250ms
++		// delay gives the renderer time to issue its post-attach resize so we
++		// don't squish the multiplexer into the recorded background size.
++		if (ev.altBufferActive) {
++			setTimeout(() => {
++				try {
++					const dims = this._serializer.getCurrentDimensions?.();
++					if (!dims || dims.cols <= 0 || dims.rows <= 0) {
++						return;
++					}
++					this._terminalProcess.resize(dims.cols, dims.rows + 1);
++					setTimeout(() => {
++						try {
++							const d2 = this._serializer.getCurrentDimensions?.();
++							if (d2 && d2.cols > 0 && d2.rows > 0) {
++								this._terminalProcess.resize(d2.cols, d2.rows);
++							}
++						} catch { /* pty may have exited; ignore */ }
++					}, 50);
++				} catch { /* pty may have exited; ignore */ }
++			}, 250);
++		}
+ 		this._terminalProcess.clearUnacknowledgedChars();
+ 		this._onPersistentProcessReady.fire();
+ 	}
+@@ -1071,6 +1100,10 @@ class XtermSerializer implements ITerminalSerializer {
+ 		this._xterm.resize(cols, rows);
+ 	}
+ 
++	getCurrentDimensions(): { cols: number; rows: number } {
++		return { cols: this._xterm.cols, rows: this._xterm.rows };
++	}
++
+ 	clearBuffer(): void {
+ 		this._xterm.clear();
+ 	}
+@@ -1095,6 +1128,10 @@ class XtermSerializer implements ITerminalSerializer {
+ 		} else {
+ 			serialized = serialize.serialize(options);
+ 		}
++		// shuvscode: tell the renderer when the live buffer is the alt screen so
++		// it can hand off to the real process's own redraw via SIGWINCH instead
++		// of pasting a stale cell snapshot over a live TUI.
++		const altBufferActive = this._xterm.buffer.active.type === 'alternate';
+ 		return {
+ 			events: [
+ 				{
+@@ -1103,7 +1140,8 @@ class XtermSerializer implements ITerminalSerializer {
+ 					data: serialized
+ 				}
+ 			],
+-			commands: this._shellIntegrationAddon.serialize()
++			commands: this._shellIntegrationAddon.serialize(),
++			altBufferActive
+ 		};
+ 	}
+ 
+@@ -1165,6 +1203,7 @@ interface ITerminalSerializer {
+ 	handleResize(cols: number, rows: number): void;
+ 	clearBuffer(): void;
+ 	generateReplayEvent(normalBufferOnly?: boolean, restoreToLastReviveBuffer?: boolean): Promise<IPtyHostProcessReplayEvent>;
++	getCurrentDimensions?(): { cols: number; rows: number };
+ 	setUnicodeVersion?(version: '6' | '11'): void;
+ 	setNextCommandId?(commandLine: string, commandId: string): void;
+ }

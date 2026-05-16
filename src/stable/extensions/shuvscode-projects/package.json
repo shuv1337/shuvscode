@@ -28,7 +28,8 @@
     "onCommand:shuvscodeProjects.refresh",
     "onCommand:shuvscodeProjects.removeProject",
     "onCommand:shuvscodeProjects.revealProjectFile",
-    "onCommand:shuvscodeProjects.switchToWindow"
+    "onCommand:shuvscodeProjects.switchToWindow",
+    "onCommand:shuvscodeProjects.openMultiplexerTerminal"
   ],
   "main": "./extension.js",
   "extensionKind": [
@@ -112,6 +113,12 @@
         "title": "Switch to Open Window",
         "category": "Projects",
         "icon": "$(multiple-windows)"
+      },
+      {
+        "command": "shuvscodeProjects.openMultiplexerTerminal",
+        "title": "Open Multiplexer Terminal",
+        "category": "Projects",
+        "icon": "$(terminal-tmux)"
       }
     ],
     "menus": {
@@ -170,6 +177,11 @@
           "command": "shuvscodeProjects.removeProject",
           "when": "view == shuvscodeProjects.projects && viewItem == projectFavorite",
           "group": "navigation@3"
+        },
+        {
+          "command": "shuvscodeProjects.openMultiplexerTerminal",
+          "when": "view == shuvscodeProjects.projects && viewItem =~ /project/",
+          "group": "inline@4"
         }
       ]
     },
@@ -246,6 +258,21 @@
           "type": "string",
           "default": "",
           "description": "Optional folder for projects.json. Supports ~ and $home."
+        },
+        "shuvscode.projects.multiplexerCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Command to run in a new terminal when 'Open Multiplexer Terminal' is invoked. Supports ${projectName}, ${projectPath}, ${projectSlug}, ${cwd}. Examples: 'zellij attach -c ${projectName}', 'tmux new -A -s ${projectSlug}'."
+        },
+        "shuvscode.projects.multiplexerTerminalName": {
+          "type": "string",
+          "default": "mux: ${projectName}",
+          "description": "Name template for multiplexer terminals. Supports the same tokens as multiplexerCommand. Used to find and reuse an existing session terminal."
+        },
+        "shuvscode.projects.autoOpenMultiplexer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically open the multiplexer terminal when a project loads (only if multiplexerCommand is set)."
         }
       }
     }
