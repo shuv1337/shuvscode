@@ -21,6 +21,7 @@
     "onStartupFinished",
     "onView:shuvscodeProjects.projects",
     "onCommand:shuvscodeProjects.saveProject",
+    "onCommand:shuvscodeProjects.addProjectToFavorites",
     "onCommand:shuvscodeProjects.editProjects",
     "onCommand:shuvscodeProjects.openProject",
     "onCommand:shuvscodeProjects.openProjectInNewWindow",
@@ -54,43 +55,49 @@
     "viewsWelcome": [
       {
         "view": "shuvscodeProjects.projects",
-        "contents": "Save this workspace or configure base folders to start switching between projects.\n[Save Project](command:shuvscodeProjects.saveProject)\n[Open Settings](command:workbench.action.openSettings?%5B%22shuvscode.projects%22%5D)"
+        "contents": "Add this workspace to Favorites or configure base folders to start switching between projects.\n[Add Current Project to Favorites](command:shuvscodeProjects.saveProject)\n[Open Project Settings](command:workbench.action.openSettings?%5B%22shuvscode.projects%22%5D)"
       }
     ],
     "commands": [
       {
         "command": "shuvscodeProjects.saveProject",
-        "title": "Save Project",
+        "title": "Add Current Project to Favorites",
         "category": "Projects",
-        "icon": "$(add)"
+        "icon": "$(star-add)"
+      },
+      {
+        "command": "shuvscodeProjects.addProjectToFavorites",
+        "title": "Add Project to Favorites",
+        "category": "Projects",
+        "icon": "$(star-add)"
       },
       {
         "command": "shuvscodeProjects.editProjects",
-        "title": "Edit Projects",
+        "title": "Edit Favorites JSON",
         "category": "Projects",
         "icon": "$(json)"
       },
       {
         "command": "shuvscodeProjects.openProject",
-        "title": "List Projects to Open",
+        "title": "Open Project in This Window",
         "category": "Projects",
         "icon": "$(folder-opened)"
       },
       {
         "command": "shuvscodeProjects.openProjectInNewWindow",
-        "title": "List Projects to Open in New Window",
+        "title": "Open Project in New Window",
         "category": "Projects",
         "icon": "$(empty-window)"
       },
       {
         "command": "shuvscodeProjects.refresh",
-        "title": "Refresh Projects",
+        "title": "Refresh Project List",
         "category": "Projects",
         "icon": "$(refresh)"
       },
       {
         "command": "shuvscodeProjects.removeProject",
-        "title": "Remove Project",
+        "title": "Remove from Favorites",
         "category": "Projects",
         "icon": "$(trash)"
       },
@@ -153,6 +160,11 @@
           "command": "shuvscodeProjects.openProjectInNewWindow",
           "when": "view == shuvscodeProjects.projects && viewItem =~ /project/",
           "group": "inline@2"
+        },
+        {
+          "command": "shuvscodeProjects.addProjectToFavorites",
+          "when": "view == shuvscodeProjects.projects && viewItem == project",
+          "group": "inline@3"
         },
         {
           "command": "shuvscodeProjects.removeProject",

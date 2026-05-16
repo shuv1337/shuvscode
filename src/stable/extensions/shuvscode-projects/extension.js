@@ -62,6 +62,10 @@ function activate(ctx) {
       await saveCurrentProject(store);
       await refresh();
     }),
+    vscode.commands.registerCommand('shuvscodeProjects.addProjectToFavorites', async item => {
+      await addProjectToFavorites(store, item && item.project);
+      await refresh();
+    }),
     vscode.commands.registerCommand('shuvscodeProjects.editProjects', async () => {
       await vscode.window.showTextDocument(await store.ensureProjectsFile());
     }),
@@ -420,12 +424,13 @@ class ProjectItem extends vscode.TreeItem {
     this.contextValue = project.kind === 'favorite' ? 'projectFavorite' : 'project';
     const current = isCurrentProject(project);
     this.description = project.invalid ? 'missing' : current ? 'current' : project.tags.join(', ');
-    this.tooltip = `${project.name}\n${project.rootPath}`;
+    const favoriteHint = project.kind === 'favorite' ? 'Saved favorite' : 'Right-click to add to Favorites';
+    this.tooltip = `${project.name}\n${project.rootPath}\n${favoriteHint}`;
     this.resourceUri = vscode.Uri.file(project.rootPath);
     this.iconPath = new vscode.ThemeIcon(project.invalid ? 'warning' : (current ? 'folder-active' : 'folder'));
     this.command = {
       command: 'shuvscodeProjects.openProject',
-      title: 'Open Project',
+      title: 'Open Project in This Window',
       arguments: [this]
     };
   }
@@ -434,26 +439,44 @@ class ProjectItem extends vscode.TreeItem {
 async function saveCurrentProject(store) {
   const current = currentProject();
   if (!current) {
-    vscode.window.showWarningMessage('Open a folder or workspace before saving a project.');
+    vscode.window.showWarningMessage('Open a folder or workspace before adding it to Favorites.');
     return;
   }
 
-  const name = await vscode.window.showInputBox({
-    title: 'Save Project',
-    prompt: 'Project name',
-    value: current.name,
-    validateInput: value => value.trim() ? undefined : 'Project name is required.'
-  });
+  await addProjectToFavorites(store, current, { askName: true, title: 'Add Current Project to Favorites' });
+}
 
-  if (!name) {
+async function addProjectToFavorites(store, project, options = {}) {
+  if (!project) {
+    vscode.window.showWarningMessage('Select a project before adding it to Favorites.');
     return;
+  }
+
+  if (project.invalid) {
+    vscode.window.showWarningMessage(`Project path does not exist: ${project.rootPath}`);
+    return;
+  }
+
+  let name = project.name;
+  if (options.askName) {
+    name = await vscode.window.showInputBox({
+      title: options.title || 'Add Project to Favorites',
+      prompt: 'Favorite name',
+      value: project.name,
+      validateInput: value => value.trim() ? undefined : 'Favorite name is required.'
+    });
+
+    if (!name) {
+      return;
+    }
   }
 
   await store.addFavorite({
     name: name.trim(),
-    rootPath: current.rootPath,
-    tags: []
+    rootPath: project.rootPath,
+    tags: project.tags || []
   });
+  vscode.window.showInformationMessage(`Added "${name.trim()}" to Favorites.`);
 }
 
 async function chooseAndOpenProject(store, forceNewWindow, item) {
