@@ -153,7 +153,7 @@
       "view/item/context": [
         {
           "command": "shuvscodeProjects.addProjectToFavorites",
-          "when": "view == shuvscodeProjects.projects && viewItem == project",
+          "when": "view == shuvscodeProjects.projects && (viewItem == project || viewItem =~ /openWindow/)",
           "group": "inline@1"
         },
         {

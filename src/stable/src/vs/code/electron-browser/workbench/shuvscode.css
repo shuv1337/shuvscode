@@ -66,6 +66,16 @@
   overflow: hidden;
 }
 
+/* Keep the branded frame from covering the final row of terminal/sidebar content. */
+.monaco-workbench.shuvscode-canvas .part.editor > .content,
+.monaco-workbench.shuvscode-canvas .part.sidebar > .content,
+.monaco-workbench.shuvscode-canvas .part.panel > .content,
+.monaco-workbench.shuvscode-canvas .part.auxiliarybar > .content {
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 /* Sidebar + auxiliarybar: tighter radius on inner edge to blend with activitybar */
 .monaco-workbench.shuvscode-canvas .part.sidebar.left > .content {
   border-top-left-radius: 0;
@@ -163,7 +173,7 @@
   background: var(--canvas-surface);
   border-top: 1px solid var(--canvas-border);
   margin-top: 0;
-  box-shadow: 0 calc(-1 * var(--canvas-gap)) 0 var(--canvas-bg);
+  box-shadow: none;
 }
 
 .monaco-workbench.shuvscode-canvas .part.statusbar .codicon[class*='codicon-'] {
