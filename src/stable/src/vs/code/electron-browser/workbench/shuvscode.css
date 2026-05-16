@@ -370,11 +370,15 @@
   height: 36px;
 }
 
-.monaco-workbench.shuvscode-canvas .part.sidebar > .content,
-.monaco-workbench.shuvscode-canvas .part.panel > .content,
-.monaco-workbench.shuvscode-canvas .part.auxiliarybar > .content {
-  padding: 6px;
-}
+/*
+ * Don't add inner padding to .part.sidebar/.panel/.auxiliarybar > .content.
+ * VS Code's internal layout sizes child composites (tree views, terminal tab
+ * strip, collapsed sections like TIMELINE) using the part's pixel rect, not
+ * the padded inner box. Adding inner padding causes those children to render
+ * below the visible area and get clipped by `overflow: hidden` on the card.
+ * The card border + radius from earlier in this file already provides the
+ * visual breathing room we want.
+ */
 
 .monaco-workbench.shuvscode-canvas .part.sidebar > .content .composite.title,
 .monaco-workbench.shuvscode-canvas .part.panel > .content .composite.title,

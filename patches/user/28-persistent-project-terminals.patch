@@ -1,0 +1,57 @@
+diff --git i/src/vs/code/electron-main/app.ts w/src/vs/code/electron-main/app.ts
+--- i/src/vs/code/electron-main/app.ts
++++ w/src/vs/code/electron-main/app.ts
+@@ -1097,4 +1097,6 @@ export class CodeApplication extends Disposable {
+            // Terminal
+            const ptyHostStarter = new ElectronPtyHostStarter({
+-            graceTime: LocalReconnectConstants.GraceTime,
++            // shuvscode: keep detached project terminals alive long enough to switch away
++            // while tests or development servers continue running in another workspace.
++            graceTime: 12 * 60 * 60 * 1000,
+            shortGraceTime: LocalReconnectConstants.ShortGraceTime,
+diff --git i/src/vs/workbench/contrib/terminal/browser/terminalEditorInput.ts w/src/vs/workbench/contrib/terminal/browser/terminalEditorInput.ts
+--- i/src/vs/workbench/contrib/terminal/browser/terminalEditorInput.ts
++++ w/src/vs/workbench/contrib/terminal/browser/terminalEditorInput.ts
+@@ -184,3 +184,3 @@ export class TerminalEditorInput extends EditorInput implements IEditorCloseHand
+-            // Don't touch processes if the shutdown was a result of reload as they will be reattached
+-            const shouldPersistTerminals = this._configurationService.getValue<boolean>(TerminalSettingId.EnablePersistentSessions) && e.reason === ShutdownReason.RELOAD;
++            // Don't touch processes if the shutdown was a result of reload or same-window workspace load as they will be reattached
++            const shouldPersistTerminals = this._configurationService.getValue<boolean>(TerminalSettingId.EnablePersistentSessions) && (e.reason === ShutdownReason.RELOAD || e.reason === ShutdownReason.LOAD);
+            if (shouldPersistTerminals) {
+diff --git i/src/vs/workbench/contrib/terminal/browser/terminalService.ts w/src/vs/workbench/contrib/terminal/browser/terminalService.ts
+--- i/src/vs/workbench/contrib/terminal/browser/terminalService.ts
++++ w/src/vs/workbench/contrib/terminal/browser/terminalService.ts
+@@ -637,6 +637,7 @@ export class TerminalService extends Disposable implements ITerminalService {
+            // still shows as that cannot be revived
+            try {
+                this._shutdownWindowCount = await this._nativeDelegate?.getWindowCount();
++                const shouldDetachProcesses = this._shouldDetachProcesses(reason);
+                const shouldReviveProcesses = this._shouldReviveProcesses(reason);
+-            if (shouldReviveProcesses) {
++            if (!shouldDetachProcesses && shouldReviveProcesses) {
+                // Attempt to persist the terminal state but only allow 2000ms as we can't block
+@@ -653,4 +654,3 @@ export class TerminalService extends Disposable implements ITerminalService {
+            // Persist terminal _processes_
+-            const shouldPersistProcesses = this._terminalConfigurationService.config.enablePersistentSessions && reason === ShutdownReason.RELOAD;
+-            if (!shouldPersistProcesses) {
++            if (!shouldDetachProcesses) {
+                const hasDirtyInstances = (
+@@ -671,4 +671,8 @@ export class TerminalService extends Disposable implements ITerminalService {
+            return false;
+        }
+-
++
++    private _shouldDetachProcesses(reason: ShutdownReason): boolean {
++        return this._terminalConfigurationService.config.enablePersistentSessions && (reason === ShutdownReason.RELOAD || reason === ShutdownReason.LOAD);
++    }
++
+        setNativeDelegate(nativeDelegate: ITerminalServiceNativeDelegate): void {
+@@ -705,5 +709,5 @@ export class TerminalService extends Disposable implements ITerminalService {
+    private _onWillShutdown(e: WillShutdownEvent): void {
+-        // Don't touch processes if the shutdown was a result of reload as they will be reattached
+-        const shouldPersistTerminals = this._terminalConfigurationService.config.enablePersistentSessions && e.reason === ShutdownReason.RELOAD;
+-
++        // Don't touch processes if the shutdown was a result of reload or same-window workspace load as they will be reattached
++        const shouldPersistTerminals = this._shouldDetachProcesses(e.reason);
++
+        for (const instance of [...this._terminalGroupService.instances, ...this._backgroundedTerminalInstances.map(bg => bg.instance)]) {

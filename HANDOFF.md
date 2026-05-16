@@ -1,56 +1,57 @@
 # HANDOFF
 
 ## Objective
-- Continue polishing the shuvscode Canvas UI and add a native Project Manager-style workflow.
-- Latest completed fixes: move Source Control into the secondary sidebar by default, fix the clipped bottom status bar, strengthen amber active-state accents, and add native Projects at the top of the primary activity bar.
+- Continue shuvscode Canvas/Projects polish from the live checkout, with the current batch centered on native Projects open-window tracking, Canvas clipping cleanup, and persistent project terminals.
 
 ## Current status
-- Done: rebuilt `shuvscode-linux-x64/bin/shuvscode` after the native Projects and activity-bar order changes.
-- Version smoke passes: `1.120.03242`, commit `a6a603d13827683767ea05de79c10e06311c8351`, `x64`.
-- App launched with a fresh smoke profile:
-  `--user-data-dir /tmp/shuvscode-projects-top-user-data --extensions-dir /tmp/shuvscode-projects-top-extensions --new-window --disable-gpu`
-- Fresh-profile storage confirms:
-  - `workbench.view.extension.shuvscode-projects` is first in `workbench.activity.pinnedViewlets2` with `order: -10`.
-  - Explorer remains next with `order: 0`.
-  - `shuvscodeProjects.projects` is visible in the Projects container.
-  - `workbench.view.scm` is pinned in `workbench.auxiliarybar.pinnedPanels`.
-  - `workbench.auxiliaryBar.empty` is `false`.
+- Branch: `shuvscode-main`, tracking `origin/shuvscode-main`.
+- HEAD is `8cce7a7 docs: align shuvscode readme with branded build`.
+- Working tree contains one cohesive follow-up batch ready for review/commit.
+- Rebuilt app exists and `./shuvscode-linux-x64/bin/shuvscode --version` returns `1.120.03260`, commit `ee7963909be0c4489e04bc0a131e5029be548d27`, `x64`.
+- `src/stable/extensions/shuvscode-projects/extension.js` now adds an Open Windows group backed by shared `windows.json` global storage, heartbeat/stale pruning, and `shuvscodeProjects.switchToWindow`.
+- `src/stable/extensions/shuvscode-projects/package.json` now eagerly activates the Projects extension, declares untrusted workspace support, registers all missing command activation events, adds `Switch to Open Window`, and exposes `shuvscode.projects.showOpenWindows`.
+- `src/stable/src/vs/code/electron-browser/workbench/shuvscode.css` removes inner padding from sidebar/panel/auxiliary content to avoid clipped child composites.
+- `patches/user/28-persistent-project-terminals.patch` is included and applies cleanly during tree preparation/build.
+- `.gitignore` now ignores timestamped previous build backups with `shuvscode-linux-x64.prev-*/`.
 
-## Key changes
-- `src/stable/extensions/shuvscode-projects/`
-  - Adds a native built-in Projects extension with a primary activity-bar container and tree view.
-  - Provides commands to save the current project, edit `projects.json`, list/open projects, open in a new window, refresh, remove saved favorites, and reveal the projects file.
-  - Stores saved projects in extension global storage as `projects.json`.
-  - Auto-detects Git repositories from configurable base folders and ignores common heavy folders.
-  - Shows the current project in the status bar without doing a full discovery scan at startup.
-- `patches/user/27-shuvscode-projects-top-activitybar.patch`
-  - Assigns the native Projects container activity-bar order `-10` so it appears above Explorer by default.
-- `patches/user/26-canvas-scm-secondary-sidebar.patch`
-  - Registers the SCM view container in `ViewContainerLocation.AuxiliaryBar`.
-- `src/stable/extensions/shuvscode-defaults/package.json`
-  - Adds `"workbench.secondarySideBar.defaultVisibility": "visible"`.
-- `src/stable/extensions/shuvscode-bootstrap/extension.js`
-  - Opens `workbench.view.scm` once on startup via `shuvscode.canvas.scmAuxiliaryOpened`.
-- `src/stable/src/vs/code/electron-browser/workbench/shuvscode.css`
-  - Fixes the status bar clipping and uses stronger amber active states for primary activity bar icons.
+## Key context
+- Branding is lowercase `shuvscode`; do not use `shuvcode`.
+- Native Projects intentionally reimplements Project Manager-style behavior without copying GPL-3.0 implementation.
+- Long-running GUI launches should be monitorable/stoppable and use isolated smoke profiles, e.g. `--user-data-dir /tmp/shuvscode-smoke-user-data --extensions-dir /tmp/shuvscode-smoke-extensions`.
 
-## Validation
+## Important files
+- `src/stable/extensions/shuvscode-projects/extension.js` — Projects provider, Open Windows registry, status bar, commands.
+- `src/stable/extensions/shuvscode-projects/package.json` — commands, menus, activation/capabilities, Projects settings.
+- `src/stable/src/vs/code/electron-browser/workbench/shuvscode.css` — Canvas chrome styling and clipping fix.
+- `patches/user/28-persistent-project-terminals.patch` — terminal lifecycle patch for reload and same-window workspace loads.
+- `PLAN-canvas-ui.md` — current Canvas roadmap and validation checklist.
+
+## Validation completed
 - `node --check src/stable/extensions/shuvscode-projects/extension.js` passed.
 - `jq . src/stable/extensions/shuvscode-projects/package.json >/dev/null` passed.
-- `./scripts/prepare-shuvscode-tree.sh && ./scripts/build-shuvscode.sh` completed successfully.
-- `./shuvscode-linux-x64/bin/shuvscode --version` returned `1.120.03242`.
-- Built artifacts contain `shuvscode-linux-x64/resources/app/extensions/shuvscode-projects/`.
-- Fresh-profile launch is running as PID `1035280`.
-- Fresh-profile storage confirms Projects is pinned first in the primary activity bar.
+- `git diff --check` passed.
+- `./scripts/prepare-shuvscode-tree.sh && ./scripts/build-shuvscode.sh` passed.
+- `./shuvscode-linux-x64/bin/shuvscode --version` passed with `1.120.03260` / `ee7963909be0c4489e04bc0a131e5029be548d27`.
+- Built package contains the edited Projects activation/capabilities metadata.
+- The persistent-terminal patch is present in the prepared VS Code tree:
+  - `vscode/src/vs/code/electron-main/app.ts` uses a 12-hour pty host grace time.
+  - `vscode/src/vs/workbench/contrib/terminal/browser/terminalEditorInput.ts` persists for `RELOAD` and `LOAD`.
+  - `vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts` uses `_shouldDetachProcesses` for `RELOAD` and `LOAD`.
+- Open Windows smoke passed with two isolated shuvscode windows using `/tmp/shuvscode-openwindows-user-data` and `/tmp/shuvscode-openwindows-extensions`.
+  - Both folders registered in shared `windows.json`.
+  - Hyprland showed both shuvscode windows.
+  - Extension host logs showed eager activation via `activationEvent: '*'` and registration of `shuvscodeProjects.switchToWindow`.
+  - After closing smoke windows, `windows.json` returned to `[]` and no smoke shuvscode process remained.
 
-## Important context
-- Do not use `shuvcode`; this project is `shuvscode`.
-- Existing unrelated untracked file before this work: `PLAN-canvas-ui.md`.
-- Older known issue still not addressed in this pass: titlebar label `"Workbench Canvas"` may still be missing on Linux.
-- The new native Projects feature intentionally clones the Project Manager behavior surface without copying its GPL-3.0 implementation.
+## Validation not completed
+- No direct UI click smoke was performed for `shuvscodeProjects.switchToWindow`.
+- No interactive terminal persistence smoke was performed across same-window folder switches.
 
 ## Next steps
-1. Visually inspect the running fresh-profile window for Projects at the top of the primary activity bar.
-2. Exercise the Projects commands from the command palette and sidebar title actions.
-3. Decide whether to add tag filtering UI and richer duplicate-name handling in a follow-up.
-4. Address the separate titlebar label issue if it remains a priority.
+1. Optionally perform manual UI smoke for `Switch to Open Window` from the Projects tree. Source review indicates `vscode.openFolder(uri, false)` maps to VS Code's existing-window reuse/focus path when another window already owns the folder.
+2. Optionally perform manual terminal persistence smoke: open a local terminal running a long-lived process, switch folders in the same window, and confirm the process reattaches or continues as intended.
+3. Commit this cohesive batch, then push if this is the intended release branch state.
+
+## Risks / open questions
+- `WindowRegistry` writes shared JSON from multiple windows without locking; it uses atomic rename and periodic heartbeat, but simultaneous window start/close could still lose one update until the next heartbeat repairs it.
+- Persistent terminal behavior changes shutdown semantics for same-window workspace loads; keep an eye on terminal state restoration edge cases after manual smoke.

@@ -10,13 +10,24 @@
   "categories": [
     "Other"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": false
+  },
   "activationEvents": [
+    "*",
     "onStartupFinished",
     "onView:shuvscodeProjects.projects",
     "onCommand:shuvscodeProjects.saveProject",
     "onCommand:shuvscodeProjects.editProjects",
     "onCommand:shuvscodeProjects.openProject",
-    "onCommand:shuvscodeProjects.openProjectInNewWindow"
+    "onCommand:shuvscodeProjects.openProjectInNewWindow",
+    "onCommand:shuvscodeProjects.refresh",
+    "onCommand:shuvscodeProjects.removeProject",
+    "onCommand:shuvscodeProjects.revealProjectFile",
+    "onCommand:shuvscodeProjects.switchToWindow"
   ],
   "main": "./extension.js",
   "extensionKind": [
@@ -88,6 +99,12 @@
         "title": "Reveal Projects File",
         "category": "Projects",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "shuvscodeProjects.switchToWindow",
+        "title": "Switch to Open Window",
+        "category": "Projects",
+        "icon": "$(multiple-windows)"
       }
     ],
     "menus": {
@@ -102,6 +119,10 @@
         },
         {
           "command": "shuvscodeProjects.revealProjectFile",
+          "when": "false"
+        },
+        {
+          "command": "shuvscodeProjects.switchToWindow",
           "when": "false"
         }
       ],
@@ -203,6 +224,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show the current project in the status bar."
+        },
+        "shuvscode.projects.showOpenWindows": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a pinned 'Open Windows' section at the top of the Projects view listing other shuvscode windows that are currently open."
         },
         "shuvscode.projects.projectsLocation": {
           "type": "string",

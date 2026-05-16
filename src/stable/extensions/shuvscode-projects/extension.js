@@ -1,15 +1,23 @@
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const vscode = require('vscode');
 
 const VIEW_ID = 'shuvscodeProjects.projects';
 const PROJECTS_FILE = 'projects.json';
+const WINDOWS_FILE = 'windows.json';
 const RECENTS_KEY = 'shuvscode.projects.recentProjects';
+const HEARTBEAT_INTERVAL_MS = 5_000;
+const HEARTBEAT_STALE_MS = 20_000;
+
+let windowRegistry; // exposed for deactivate cleanup
 
 function activate(ctx) {
   const store = new ProjectStore(ctx);
-  const provider = new ProjectsProvider(store);
+  windowRegistry = new WindowRegistry(ctx, store);
+  const provider = new ProjectsProvider(store, windowRegistry);
   const view = vscode.window.createTreeView(VIEW_ID, {
     treeDataProvider: provider,
     showCollapseAll: true
@@ -29,10 +37,21 @@ function activate(ctx) {
     }
   }
 
+  // Re-render when peer windows announce themselves or disappear.
+  windowRegistry.onDidChange(() => {
+    if (provider.loaded) {
+      provider.refreshOpenWindows();
+    }
+  });
+
   ctx.subscriptions.push(
     view,
     status,
-    vscode.workspace.onDidChangeWorkspaceFolders(refreshIfLoaded),
+    windowRegistry,
+    vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+      await windowRegistry.update();
+      await refreshIfLoaded();
+    }),
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('shuvscode.projects')) {
         refreshIfLoaded();
@@ -61,13 +80,38 @@ function activate(ctx) {
         await store.removeFavorite(item.project);
         await refresh();
       }
+    }),
+    vscode.commands.registerCommand('shuvscodeProjects.switchToWindow', async item => {
+      const project = item && item.project;
+      if (!project) {
+        return;
+      }
+      if (project.isCurrent) {
+        // Already focused — just nudge the tree.
+        await refresh();
+        return;
+      }
+      await vscode.commands.executeCommand(
+        'vscode.openFolder',
+        vscode.Uri.file(project.rootPath),
+        false
+      );
     })
   );
 
+  windowRegistry.start();
   updateStatus(status, store);
 }
 
-function deactivate() {}
+function deactivate() {
+  if (windowRegistry) {
+    try {
+      windowRegistry.removeSync();
+    } catch {
+      // best-effort cleanup on shutdown
+    }
+  }
+}
 
 class ProjectStore {
   constructor(ctx) {
@@ -250,8 +294,9 @@ class ProjectStore {
 }
 
 class ProjectsProvider {
-  constructor(store) {
+  constructor(store, windowRegistry) {
     this.store = store;
+    this.windowRegistry = windowRegistry;
     this.emitter = new vscode.EventEmitter();
     this.onDidChangeTreeData = this.emitter.event;
     this.model = { favorites: [], detected: [] };
@@ -264,6 +309,11 @@ class ProjectsProvider {
     this.emitter.fire();
   }
 
+  // Lightweight refresh used when only the peer-windows list changed.
+  refreshOpenWindows() {
+    this.emitter.fire();
+  }
+
   getTreeItem(element) {
     return element;
   }
@@ -271,14 +321,30 @@ class ProjectsProvider {
   async getChildren(element) {
     if (!element) {
       await this.refreshIfEmpty();
+      const openWindows = this.windowRegistry ? this.windowRegistry.list() : [];
       const groupList = this.store.config().get('groupList', true);
-      if (!groupList) {
-        return this.projectItems([...this.model.favorites, ...this.model.detected]);
+      const showOpenWindows = this.store.config().get('showOpenWindows', true);
+      const root = [];
+      if (showOpenWindows && openWindows.length > 0) {
+        root.push(new GroupItem('Open Windows', openWindows.length, 'multiple-windows', 'openWindows'));
       }
-      return [
-        new GroupItem('Favorites', this.model.favorites.length, 'star-full'),
-        new GroupItem('Git Repositories', this.model.detected.length, 'repo')
-      ];
+      if (!groupList) {
+        root.push(...this.projectItems([...this.model.favorites, ...this.model.detected]));
+        return root;
+      }
+      root.push(
+        new GroupItem('Favorites', this.model.favorites.length, 'star-full', 'favorites'),
+        new GroupItem('Git Repositories', this.model.detected.length, 'repo', 'git')
+      );
+      return root;
+    }
+
+    if (element.group === 'openWindows') {
+      const openWindows = this.windowRegistry ? this.windowRegistry.list() : [];
+      if (openWindows.length === 0) {
+        return [new EmptyItem('No other windows open')];
+      }
+      return openWindows.map(entry => new OpenWindowItem(entry));
     }
 
     if (element.group === 'favorites') {
@@ -309,19 +375,40 @@ class ProjectsProvider {
 }
 
 class GroupItem extends vscode.TreeItem {
-  constructor(label, count, icon) {
+  constructor(label, count, icon, group) {
     super(`${label} (${count})`, vscode.TreeItemCollapsibleState.Expanded);
-    this.group = label === 'Favorites' ? 'favorites' : 'git';
-    this.contextValue = 'group';
+    this.group = group;
+    this.contextValue = group === 'openWindows' ? 'openWindowsGroup' : 'group';
     this.iconPath = new vscode.ThemeIcon(icon);
   }
 }
 
 class EmptyItem extends vscode.TreeItem {
-  constructor() {
-    super('No projects found', vscode.TreeItemCollapsibleState.None);
+  constructor(label) {
+    super(label || 'No projects found', vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'empty';
     this.iconPath = new vscode.ThemeIcon('info');
+  }
+}
+
+class OpenWindowItem extends vscode.TreeItem {
+  constructor(entry) {
+    super(entry.name, vscode.TreeItemCollapsibleState.None);
+    this.project = entry;
+    this.id = `openWindow:${entry.windowId}:${entry.rootPath}`;
+    this.contextValue = entry.isCurrent ? 'openWindowCurrent' : 'openWindow';
+    this.description = entry.isCurrent ? 'this window' : compactPath(entry.rootPath);
+    this.tooltip = `${entry.name}\n${entry.rootPath}${entry.isCurrent ? '\n(this window)' : ''}`;
+    this.resourceUri = vscode.Uri.file(entry.rootPath);
+    this.iconPath = new vscode.ThemeIcon(
+      entry.isCurrent ? 'circle-large-filled' : 'window',
+      entry.isCurrent ? new vscode.ThemeColor('charts.orange') : undefined
+    );
+    this.command = {
+      command: 'shuvscodeProjects.switchToWindow',
+      title: 'Switch to Window',
+      arguments: [this]
+    };
   }
 }
 
@@ -494,6 +581,200 @@ async function exists(value) {
     return true;
   } catch {
     return false;
+  }
+}
+
+function compactPath(value) {
+  const home = os.homedir();
+  if (value && value.startsWith(home)) {
+    return `~${value.slice(home.length)}`;
+  }
+  return value || '';
+}
+
+/**
+ * Tracks which shuvscode windows are currently open by writing each window's
+ * identity and root folder to a shared `windows.json` file in the extension's
+ * global storage (shared across windows). A periodic heartbeat keeps the entry
+ * fresh; entries older than HEARTBEAT_STALE_MS are pruned as dead.
+ */
+class WindowRegistry {
+  constructor(ctx, store) {
+    this.ctx = ctx;
+    this.store = store;
+    this.windowId = crypto.randomBytes(6).toString('hex');
+    this.pid = process.pid;
+    this.disposed = false;
+    this.timer = undefined;
+    this.watcher = undefined;
+    this.cache = [];
+    this.emitter = new vscode.EventEmitter();
+    this.onDidChange = this.emitter.event;
+  }
+
+  start() {
+    // Best-effort: write our entry immediately and refresh peer list.
+    this.update().catch(() => {});
+    this.refresh().catch(() => {});
+
+    this.timer = setInterval(() => {
+      if (this.disposed) {
+        return;
+      }
+      this.update().catch(() => {});
+      this.refresh().catch(() => {});
+    }, HEARTBEAT_INTERVAL_MS);
+    if (this.timer && typeof this.timer.unref === 'function') {
+      this.timer.unref();
+    }
+
+    // React quickly when other windows update the registry file.
+    this.installFileWatcher().catch(() => {});
+  }
+
+  async installFileWatcher() {
+    try {
+      const folder = this.ctx.globalStorageUri.fsPath;
+      await fs.mkdir(folder, { recursive: true });
+      const filePath = path.join(folder, WINDOWS_FILE);
+      // Ensure the file exists so fs.watch has a target on all platforms.
+      try { await fs.access(filePath); } catch { await fs.writeFile(filePath, '[]\n', 'utf8'); }
+      this.watcher = fsSync.watch(filePath, { persistent: false }, () => {
+        if (this.disposed) {
+          return;
+        }
+        this.refresh().catch(() => {});
+      });
+    } catch {
+      // Watching is best-effort; the timer-based refresh is the safety net.
+    }
+  }
+
+  list() {
+    return this.cache;
+  }
+
+  filePath() {
+    return path.join(this.ctx.globalStorageUri.fsPath, WINDOWS_FILE);
+  }
+
+  async readAll() {
+    const filePath = this.filePath();
+    try {
+      const raw = await fs.readFile(filePath, 'utf8');
+      const data = JSON.parse(raw || '[]');
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async writeAll(entries) {
+    const folder = this.ctx.globalStorageUri.fsPath;
+    await fs.mkdir(folder, { recursive: true });
+    const filePath = this.filePath();
+    const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    await fs.writeFile(tmpPath, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
+    await fs.rename(tmpPath, filePath);
+  }
+
+  async update() {
+    if (this.disposed) {
+      return;
+    }
+    const current = currentProject();
+    const now = Date.now();
+    const entries = (await this.readAll()).filter(entry => entry && entry.windowId !== this.windowId);
+    if (current) {
+      entries.push({
+        windowId: this.windowId,
+        pid: this.pid,
+        name: current.name,
+        rootPath: normalizeFsPath(current.rootPath),
+        updatedAt: now
+      });
+    }
+    // Drop stale peers while we're here.
+    const fresh = entries.filter(entry => entry && entry.updatedAt && (now - entry.updatedAt) < HEARTBEAT_STALE_MS * 2);
+    await this.writeAll(fresh);
+  }
+
+  async refresh() {
+    if (this.disposed) {
+      return;
+    }
+    const now = Date.now();
+    const entries = (await this.readAll())
+      .filter(entry => entry && entry.rootPath && entry.updatedAt && (now - entry.updatedAt) < HEARTBEAT_STALE_MS);
+    // De-dupe by rootPath (a folder is owned by at most one window).
+    const byRoot = new Map();
+    for (const entry of entries) {
+      const key = normalizeFsPath(entry.rootPath);
+      const existing = byRoot.get(key);
+      if (!existing || entry.updatedAt > existing.updatedAt) {
+        byRoot.set(key, { ...entry, rootPath: key });
+      }
+    }
+    const list = [...byRoot.values()]
+      .map(entry => ({
+        ...entry,
+        isCurrent: entry.windowId === this.windowId
+      }))
+      .sort((a, b) => {
+        if (a.isCurrent !== b.isCurrent) {
+          return a.isCurrent ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+
+    if (this.cacheChanged(list)) {
+      this.cache = list;
+      this.emitter.fire();
+    }
+  }
+
+  cacheChanged(next) {
+    if (next.length !== this.cache.length) {
+      return true;
+    }
+    for (let i = 0; i < next.length; i++) {
+      const a = next[i];
+      const b = this.cache[i];
+      if (!b || a.windowId !== b.windowId || a.rootPath !== b.rootPath || a.isCurrent !== b.isCurrent || a.name !== b.name) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  removeSync() {
+    // Synchronous best-effort removal from `deactivate`.
+    try {
+      const filePath = this.filePath();
+      const raw = fsSync.readFileSync(filePath, 'utf8');
+      const data = JSON.parse(raw || '[]');
+      if (!Array.isArray(data)) {
+        return;
+      }
+      const remaining = data.filter(entry => entry && entry.windowId !== this.windowId);
+      fsSync.writeFileSync(filePath, `${JSON.stringify(remaining, null, 2)}\n`, 'utf8');
+    } catch {
+      // ignore
+    }
+  }
+
+  dispose() {
+    this.disposed = true;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+    if (this.watcher) {
+      try { this.watcher.close(); } catch { /* ignore */ }
+      this.watcher = undefined;
+    }
+    this.emitter.dispose();
+    this.removeSync();
   }
 }
 
