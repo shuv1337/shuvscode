@@ -152,18 +152,18 @@
       ],
       "view/item/context": [
         {
-          "command": "shuvscodeProjects.openProject",
-          "when": "view == shuvscodeProjects.projects && viewItem =~ /project/",
+          "command": "shuvscodeProjects.addProjectToFavorites",
+          "when": "view == shuvscodeProjects.projects && viewItem == project",
           "group": "inline@1"
         },
         {
-          "command": "shuvscodeProjects.openProjectInNewWindow",
+          "command": "shuvscodeProjects.openProject",
           "when": "view == shuvscodeProjects.projects && viewItem =~ /project/",
           "group": "inline@2"
         },
         {
-          "command": "shuvscodeProjects.addProjectToFavorites",
-          "when": "view == shuvscodeProjects.projects && viewItem == project",
+          "command": "shuvscodeProjects.openProjectInNewWindow",
+          "when": "view == shuvscodeProjects.projects && viewItem =~ /project/",
           "group": "inline@3"
         },
         {
