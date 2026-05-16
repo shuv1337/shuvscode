@@ -1,0 +1,55 @@
+diff --git i/src/vs/platform/terminal/common/terminal.ts w/src/vs/platform/terminal/common/terminal.ts
+index e2d19d93..959e046f 100644
+--- i/src/vs/platform/terminal/common/terminal.ts
++++ w/src/vs/platform/terminal/common/terminal.ts
+@@ -27,6 +27,7 @@ export const enum TerminalSettingPrefix {
+ 
+ export const enum TerminalSettingId {
+ 	SendKeybindingsToShell = 'terminal.integrated.sendKeybindingsToShell',
++	DisableVSCodeKeybindings = 'terminal.integrated.disableVSCodeKeybindings',
+ 	AutomationProfileLinux = 'terminal.integrated.automationProfile.linux',
+ 	AutomationProfileMacOs = 'terminal.integrated.automationProfile.osx',
+ 	AutomationProfileWindows = 'terminal.integrated.automationProfile.windows',
+diff --git i/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts w/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
+index 3549954d..e6162a29 100644
+--- i/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
++++ w/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
+@@ -1129,6 +1129,10 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+ 				return false;
+ 			}
+ 
++			if (this._terminalConfigurationService.config.disableVSCodeKeybindings) {
++				return true;
++			}
++
+ 			const standardKeyboardEvent = new StandardKeyboardEvent(event);
+ 			const resolveResult = this._keybindingService.softDispatch(standardKeyboardEvent, standardKeyboardEvent.target);
+ 
+diff --git i/src/vs/workbench/contrib/terminal/common/terminal.ts w/src/vs/workbench/contrib/terminal/common/terminal.ts
+index 41853cd4..fa1a7b89 100644
+--- i/src/vs/workbench/contrib/terminal/common/terminal.ts
++++ w/src/vs/workbench/contrib/terminal/common/terminal.ts
+@@ -167,6 +167,7 @@ export interface ITerminalConfiguration {
+ 	mouseWheelScrollSensitivity: number;
+ 	tabStopWidth: number;
+ 	sendKeybindingsToShell: boolean;
++	disableVSCodeKeybindings: boolean;
+ 	fontSize: number;
+ 	letterSpacing: number;
+ 	lineHeight: number;
+diff --git i/src/vs/workbench/contrib/terminal/common/terminalConfiguration.ts w/src/vs/workbench/contrib/terminal/common/terminalConfiguration.ts
+index 6b92f350..dd9b5ce2 100644
+--- i/src/vs/workbench/contrib/terminal/common/terminalConfiguration.ts
++++ w/src/vs/workbench/contrib/terminal/common/terminalConfiguration.ts
+@@ -48,6 +48,11 @@ const terminalConfiguration: IStringDictionary<IConfigurationPropertySchema> = {
+ 		type: 'boolean',
+ 		default: false
+ 	},
++	[TerminalSettingId.DisableVSCodeKeybindings]: {
++		markdownDescription: localize('terminal.integrated.disableVSCodeKeybindings', "When enabled, disables all VS Code keybindings while the terminal has focus, passing every keystroke through to the terminal shell. Overrides {0}, {1}, and {2}.", '`#terminal.integrated.sendKeybindingsToShell#`', '`#terminal.integrated.commandsToSkipShell#`', '`#terminal.integrated.allowChords#`'),
++		type: 'boolean',
++		default: true
++	},
+ 	[TerminalSettingId.TabsDefaultColor]: {
+ 		description: localize('terminal.integrated.tabs.defaultColor', "A theme color ID to associate with terminal icons by default."),
+ 		...terminalColorSchema,
