@@ -4,20 +4,31 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const vscode = require('vscode');
+const { ZellijManager, ZellijError } = require('./zellij');
 
 const VIEW_ID = 'shuvscodeProjects.projects';
 const PROJECTS_FILE = 'projects.json';
 const WINDOWS_FILE = 'windows.json';
+const ACTIVE_PROJECT_FILE = 'active-project.json';
 const RECENTS_KEY = 'shuvscode.projects.recentProjects';
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const HEARTBEAT_STALE_MS = 20_000;
+const ZELLIJ_ENABLED_CONTEXT = 'shuvscode.projects.zellij.enabled';
+const ZELLIJ_AVAILABLE_CONTEXT = 'shuvscode.projects.zellij.available';
+const HAS_ACTIVE_PROJECT_CONTEXT = 'shuvscode.projects.hasActiveProject';
 
 let windowRegistry; // exposed for deactivate cleanup
+let zellijManager;
 
 function activate(ctx) {
   const store = new ProjectStore(ctx);
-  windowRegistry = new WindowRegistry(ctx, store);
-  const provider = new ProjectsProvider(store, windowRegistry);
+  const activeProjects = new ActiveProjectStore(ctx);
+  zellijManager = new ZellijManager({
+    storagePath: ctx.globalStorageUri.fsPath,
+    getConfig: () => zellijSettings(store.config())
+  });
+  windowRegistry = new WindowRegistry(ctx, store, activeProjects);
+  const provider = new ProjectsProvider(store, windowRegistry, activeProjects, zellijManager);
   const view = vscode.window.createTreeView(VIEW_ID, {
     treeDataProvider: provider,
     showCollapseAll: true
@@ -26,14 +37,14 @@ function activate(ctx) {
 
   async function refresh() {
     await provider.refresh();
-    await updateStatus(status, store);
+    await updateStatus(status, store, activeProjects);
   }
 
   async function refreshIfLoaded() {
     if (provider.loaded) {
       await refresh();
     } else {
-      await updateStatus(status, store);
+      await updateStatus(status, store, activeProjects);
     }
   }
 
@@ -52,9 +63,10 @@ function activate(ctx) {
       await windowRegistry.update();
       await refreshIfLoaded();
     }),
-    vscode.workspace.onDidChangeConfiguration(e => {
+    vscode.workspace.onDidChangeConfiguration(async e => {
       if (e.affectsConfiguration('shuvscode.projects')) {
-        refreshIfLoaded();
+        await updateZellijContext(zellijManager);
+        await refreshIfLoaded();
       }
     }),
     vscode.commands.registerCommand('shuvscodeProjects.refresh', refresh),
@@ -76,8 +88,14 @@ function activate(ctx) {
     vscode.commands.registerCommand('shuvscodeProjects.openProject', async item => {
       await chooseAndOpenProject(store, false, item);
     }),
+    vscode.commands.registerCommand('shuvscodeProjects.openProjectWorkspace', async item => {
+      await chooseAndOpenProject(store, false, item);
+    }),
     vscode.commands.registerCommand('shuvscodeProjects.openProjectInNewWindow', async item => {
       await chooseAndOpenProject(store, true, item);
+    }),
+    vscode.commands.registerCommand('shuvscodeProjects.openActiveProjectAsWorkspace', async () => {
+      await openActiveProjectAsWorkspace(activeProjects);
     }),
     vscode.commands.registerCommand('shuvscodeProjects.removeProject', async item => {
       if (item && item.project && item.project.kind === 'favorite') {
@@ -95,15 +113,31 @@ function activate(ctx) {
         await refresh();
         return;
       }
+      const rootPath = project.workspaceRoot || project.rootPath || project.activeProjectRoot;
+      if (!rootPath) {
+        return;
+      }
       await vscode.commands.executeCommand(
         'vscode.openFolder',
-        vscode.Uri.file(project.rootPath),
+        vscode.Uri.file(rootPath),
         false
       );
     }),
     vscode.commands.registerCommand('shuvscodeProjects.openMultiplexerTerminal', async item => {
       const project = (item && item.project) || currentProject();
       await openMultiplexerTerminal(project);
+    }),
+    vscode.commands.registerCommand('shuvscodeProjects.openManagedZellij', async item => {
+      const project = (item && item.project) || await activeProjects.read() || currentProject();
+      await openManagedZellijTerminal(zellijManager, project);
+    }),
+    vscode.commands.registerCommand('shuvscodeProjects.refreshZellijState', async () => {
+      await provider.refresh();
+      await updateStatus(status, store, activeProjects);
+      await updateZellijContext(zellijManager);
+    }),
+    vscode.commands.registerCommand('shuvscodeProjects.fastSwitchProject', async item => {
+      await fastSwitchProject(store, provider, activeProjects, zellijManager, status, item);
     }),
     // Auto-open a project-scoped multiplexer terminal when a project loads,
     // if the user opted in via shuvscode.projects.autoOpenMultiplexer.
@@ -113,9 +147,11 @@ function activate(ctx) {
   );
   // Also try once on activation in case the workspace folder was already set.
   maybeAutoOpenMultiplexerTerminal();
+  updateZellijContext(zellijManager).catch(() => {});
+  maybeAutoStartZellij(zellijManager, provider, status, store, activeProjects).catch(() => {});
 
   windowRegistry.start();
-  updateStatus(status, store);
+  updateStatus(status, store, activeProjects);
 }
 
 function deactivate() {
@@ -308,18 +344,80 @@ class ProjectStore {
   }
 }
 
+class ActiveProjectStore {
+  constructor(ctx) {
+    this.ctx = ctx;
+  }
+
+  filePath() {
+    return path.join(this.ctx.globalStorageUri.fsPath, ACTIVE_PROJECT_FILE);
+  }
+
+  async read() {
+    try {
+      const raw = await fs.readFile(this.filePath(), 'utf8');
+      const data = JSON.parse(raw || 'null');
+      if (!data || !data.rootPath) {
+        return undefined;
+      }
+      return {
+        name: data.name || path.basename(data.rootPath),
+        rootPath: normalizeFsPath(data.rootPath),
+        source: data.source || 'zellij-fast-switch',
+        updatedAt: data.updatedAt || 0
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  async write(project, source = 'zellij-fast-switch') {
+    if (!project || !project.rootPath) {
+      return;
+    }
+    const filePath = this.filePath();
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const next = {
+      version: 1,
+      name: project.name || path.basename(project.rootPath),
+      rootPath: normalizeFsPath(project.rootPath),
+      source,
+      updatedAt: Date.now()
+    };
+    const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    await fs.writeFile(tmpPath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+    await fs.rename(tmpPath, filePath);
+    await vscode.commands.executeCommand('setContext', HAS_ACTIVE_PROJECT_CONTEXT, true);
+  }
+
+  async clear() {
+    try {
+      await fs.unlink(this.filePath());
+    } catch {
+      // No active project file is fine.
+    }
+    await vscode.commands.executeCommand('setContext', HAS_ACTIVE_PROJECT_CONTEXT, false);
+  }
+}
+
 class ProjectsProvider {
-  constructor(store, windowRegistry) {
+  constructor(store, windowRegistry, activeProjects, zellijManager) {
     this.store = store;
     this.windowRegistry = windowRegistry;
+    this.activeProjects = activeProjects;
+    this.zellijManager = zellijManager;
     this.emitter = new vscode.EventEmitter();
     this.onDidChangeTreeData = this.emitter.event;
     this.model = { favorites: [], detected: [] };
+    this.activeProject = undefined;
+    this.zellijRoots = new Set();
     this.loaded = false;
   }
 
   async refresh() {
     this.model = await this.store.allProjects();
+    this.activeProject = await this.activeProjects.read();
+    this.zellijRoots = this.zellijManager ? await this.zellijManager.knownProjectRoots() : new Set();
     this.loaded = true;
     this.emitter.fire();
   }
@@ -376,6 +474,8 @@ class ProjectsProvider {
   async refreshIfEmpty() {
     if (!this.loaded) {
       this.model = await this.store.allProjects();
+      this.activeProject = await this.activeProjects.read();
+      this.zellijRoots = this.zellijManager ? await this.zellijManager.knownProjectRoots() : new Set();
       this.loaded = true;
     }
   }
@@ -385,7 +485,12 @@ class ProjectsProvider {
     if (sorted.length === 0) {
       return [new EmptyItem()];
     }
-    return sorted.map(project => new ProjectItem(project));
+    const defaultAction = this.store.config().get('defaultProjectAction', 'open-workspace');
+    return sorted.map(project => new ProjectItem(project, {
+      activeProject: this.activeProject,
+      zellijRoots: this.zellijRoots,
+      defaultAction
+    }));
   }
 }
 
@@ -408,13 +513,25 @@ class EmptyItem extends vscode.TreeItem {
 
 class OpenWindowItem extends vscode.TreeItem {
   constructor(entry) {
-    super(entry.name, vscode.TreeItemCollapsibleState.None);
+    const name = entry.activeProjectName || entry.workspaceName || entry.name;
+    super(name, vscode.TreeItemCollapsibleState.None);
     this.project = entry;
-    this.id = `openWindow:${entry.windowId}:${entry.rootPath}`;
+    const rootPath = entry.workspaceRoot || entry.rootPath || entry.activeProjectRoot;
+    this.id = `openWindow:${entry.windowId}:${rootPath}`;
     this.contextValue = entry.isCurrent ? 'openWindowCurrent' : 'openWindow';
-    this.description = entry.isCurrent ? 'this window' : compactPath(entry.rootPath);
-    this.tooltip = `${entry.name}\n${entry.rootPath}${entry.isCurrent ? '\n(this window)' : ''}`;
-    this.resourceUri = vscode.Uri.file(entry.rootPath);
+    if (entry.isCurrent) {
+      this.description = 'this window';
+    } else if (entry.workspaceRoot && entry.activeProjectRoot && normalizeFsPath(entry.workspaceRoot) !== normalizeFsPath(entry.activeProjectRoot)) {
+      this.description = `active: ${entry.activeProjectName || compactPath(entry.activeProjectRoot)}`;
+    } else {
+      this.description = compactPath(rootPath);
+    }
+    const workspaceLine = entry.workspaceRoot ? `Workspace: ${entry.workspaceRoot}` : undefined;
+    const activeLine = entry.activeProjectRoot ? `Active: ${entry.activeProjectRoot}` : undefined;
+    this.tooltip = [name, workspaceLine, activeLine, entry.isCurrent ? '(this window)' : undefined].filter(Boolean).join('\n');
+    if (rootPath) {
+      this.resourceUri = vscode.Uri.file(rootPath);
+    }
     this.iconPath = new vscode.ThemeIcon(
       entry.isCurrent ? 'circle-large-filled' : 'window',
       entry.isCurrent ? new vscode.ThemeColor('charts.orange') : undefined
@@ -428,20 +545,35 @@ class OpenWindowItem extends vscode.TreeItem {
 }
 
 class ProjectItem extends vscode.TreeItem {
-  constructor(project) {
+  constructor(project, state = {}) {
     super(project.name, vscode.TreeItemCollapsibleState.None);
     this.project = project;
     this.id = `${project.kind}:${project.rootPath}`;
     this.contextValue = project.kind === 'favorite' ? 'projectFavorite' : 'project';
-    const current = isCurrentProject(project);
-    this.description = project.invalid ? 'missing' : current ? 'current' : project.tags.join(', ');
+    const workspace = isCurrentProject(project);
+    const active = isActiveProject(project, state.activeProject);
+    const hasZellij = state.zellijRoots && state.zellijRoots.has(normalizeFsPath(project.rootPath));
+    const labels = [];
+    if (workspace) {
+      labels.push('workspace');
+    }
+    if (active) {
+      labels.push('active');
+    }
+    if (hasZellij) {
+      labels.push('zellij');
+    }
+    this.description = project.invalid ? 'missing' : labels.length ? labels.join(', ') : project.tags.join(', ');
     const favoriteHint = project.kind === 'favorite' ? 'Saved favorite' : 'Right-click to add to Favorites';
     this.tooltip = `${project.name}\n${project.rootPath}\n${favoriteHint}`;
     this.resourceUri = vscode.Uri.file(project.rootPath);
-    this.iconPath = new vscode.ThemeIcon(project.invalid ? 'warning' : (current ? 'folder-active' : 'folder'));
+    const icon = project.invalid ? 'warning' : active ? 'terminal' : workspace ? 'folder-active' : hasZellij ? 'terminal' : 'folder';
+    const color = active ? new vscode.ThemeColor('charts.orange') : undefined;
+    this.iconPath = new vscode.ThemeIcon(icon, color);
+    const command = state.defaultAction === 'fast-switch' ? 'shuvscodeProjects.fastSwitchProject' : 'shuvscodeProjects.openProject';
     this.command = {
-      command: 'shuvscodeProjects.openProject',
-      title: 'Open Project in This Window',
+      command,
+      title: state.defaultAction === 'fast-switch' ? 'Fast Switch Project' : 'Open Project in This Window',
       arguments: [this]
     };
   }
@@ -500,7 +632,9 @@ async function chooseAndOpenProject(store, forceNewWindow, item) {
     return;
   }
   await store.remember(project);
+  console.time?.(`[shuvscode-projects] openFolder ${project.rootPath}`);
   await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.rootPath), forceNewWindow);
+  console.timeEnd?.(`[shuvscode-projects] openFolder ${project.rootPath}`);
 }
 
 async function pickProject(store) {
@@ -524,21 +658,32 @@ async function pickProject(store) {
   return picked && picked.project;
 }
 
-async function updateStatus(status, store) {
+async function updateStatus(status, store, activeProjects) {
   if (!store.config().get('showProjectNameInStatusBar', true)) {
     status.hide();
     return;
   }
 
+  const active = activeProjects ? await activeProjects.read() : undefined;
+  await vscode.commands.executeCommand('setContext', HAS_ACTIVE_PROJECT_CONTEXT, !!active);
   const current = currentProject();
-  if (!current) {
+  if (!current && !active) {
     status.hide();
     return;
   }
 
-  status.text = `$(folder-active) ${current.name}`;
-  status.tooltip = current.rootPath;
-  status.command = 'shuvscodeProjects.openProject';
+  if (active) {
+    const differs = !current || normalizeFsPath(active.rootPath) !== normalizeFsPath(current.rootPath);
+    status.text = `${differs ? '$(terminal)' : '$(folder-active)'} ${active.name}`;
+    status.tooltip = differs && current
+      ? `Active Zellij project: ${active.rootPath}\nWorkspace: ${current.rootPath}`
+      : active.rootPath;
+    status.command = differs ? 'shuvscodeProjects.openActiveProjectAsWorkspace' : 'shuvscodeProjects.openProject';
+  } else {
+    status.text = `$(folder-active) ${current.name}`;
+    status.tooltip = current.rootPath;
+    status.command = 'shuvscodeProjects.openProject';
+  }
   status.show();
 }
 
@@ -564,6 +709,10 @@ function currentProject() {
 function isCurrentProject(project) {
   const current = currentProject();
   return !!current && normalizeFsPath(current.rootPath) === normalizeFsPath(project.rootPath);
+}
+
+function isActiveProject(project, activeProject) {
+  return !!activeProject && !!project && normalizeFsPath(activeProject.rootPath) === normalizeFsPath(project.rootPath);
 }
 
 function normalizeProject(project) {
@@ -624,6 +773,181 @@ function compactPath(value) {
     return `~${value.slice(home.length)}`;
   }
   return value || '';
+}
+
+function zellijSettings(config) {
+  return {
+    enabled: config.get('zellij.enabled', false),
+    executablePath: config.get('zellij.executablePath', 'zellij') || 'zellij',
+    sessionName: config.get('zellij.sessionName', 'shuvscode-managed') || 'shuvscode-managed',
+    tabNameTemplate: config.get('zellij.tabNameTemplate', '${projectSlug}') || '${projectSlug}',
+    bootstrapCommand: config.get('zellij.bootstrapCommand', '') || ''
+  };
+}
+
+async function updateZellijContext(manager) {
+  const cfg = manager.config();
+  await vscode.commands.executeCommand('setContext', ZELLIJ_ENABLED_CONTEXT, !!cfg.enabled);
+  if (!cfg.enabled) {
+    await vscode.commands.executeCommand('setContext', ZELLIJ_AVAILABLE_CONTEXT, false);
+    return;
+  }
+  const availability = await manager.available();
+  await vscode.commands.executeCommand('setContext', ZELLIJ_AVAILABLE_CONTEXT, !!availability.available);
+}
+
+async function maybeAutoStartZellij(manager, provider, status, store, activeProjects) {
+  const cfg = store.config();
+  if (!cfg.get('zellij.enabled', false) || !cfg.get('zellij.autoStart', true)) {
+    return;
+  }
+  try {
+    await ensureManagedZellijWithPrompt(manager);
+    if (cfg.get('zellij.openSharedTerminalOnStart', false)) {
+      await openManagedZellijTerminal(manager, await activeProjects.read() || currentProject(), { skipEnsure: true });
+    }
+    await provider.refresh();
+    await updateStatus(status, store, activeProjects);
+  } catch (error) {
+    if (error && error.code !== 'USER_CANCELLED') {
+      showZellijError(error);
+    }
+  }
+}
+
+async function ensureManagedZellijWithPrompt(manager) {
+  try {
+    return await manager.ensureManagedSession();
+  } catch (error) {
+    if (!(error instanceof ZellijError) || error.code !== 'UNOWNED_SESSION') {
+      throw error;
+    }
+    const useExisting = 'Use Existing Session';
+    const openSettings = 'Open Settings';
+    const choice = await vscode.window.showWarningMessage(
+      `Zellij session "${error.sessionName}" already exists but was not created by shuvscode.`,
+      useExisting,
+      openSettings,
+      'Cancel'
+    );
+    if (choice === useExisting) {
+      await manager.claimManagedSession(error.sessionName);
+      return manager.ensureManagedSession();
+    }
+    if (choice === openSettings) {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'shuvscode.projects.zellij.sessionName');
+    }
+    throw new ZellijError('User cancelled Zellij session ownership prompt.', 'USER_CANCELLED');
+  }
+}
+
+function showZellijError(error) {
+  const message = error && error.code === 'MISSING_EXECUTABLE'
+    ? 'Zellij executable was not found. Set shuvscode.projects.zellij.executablePath to the full zellij path.'
+    : `Zellij integration failed: ${error && error.message ? error.message : String(error)}`;
+  vscode.window.showWarningMessage(message);
+}
+
+async function openManagedZellijTerminal(manager, project, options = {}) {
+  const cfg = manager.config();
+  if (!cfg.enabled) {
+    const choice = await vscode.window.showInformationMessage(
+      'Enable shuvscode.projects.zellij.enabled to use the managed Zellij session.',
+      'Open Settings'
+    );
+    if (choice === 'Open Settings') {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'shuvscode.projects.zellij.enabled');
+    }
+    return;
+  }
+  if (!options.skipEnsure) {
+    await ensureManagedZellijWithPrompt(manager);
+  }
+
+  const name = `zellij: ${cfg.sessionName}`;
+  const existing = vscode.window.terminals.find(t => t.name === name);
+  if (existing) {
+    existing.show(true);
+    return existing;
+  }
+
+  const terminal = vscode.window.createTerminal({
+    name,
+    cwd: project && project.rootPath ? project.rootPath : os.homedir()
+  });
+  terminal.show(true);
+  terminal.sendText(manager.attachCommand(), true);
+  return terminal;
+}
+
+async function openActiveProjectAsWorkspace(activeProjects) {
+  const active = await activeProjects.read();
+  if (!active || !active.rootPath) {
+    vscode.window.showInformationMessage('No active Zellij project is selected.');
+    return;
+  }
+  if (!(await exists(active.rootPath))) {
+    vscode.window.showWarningMessage(`Active project path does not exist: ${active.rootPath}`);
+    return;
+  }
+  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(active.rootPath), false);
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fastSwitchProject(store, provider, activeProjects, manager, status, item) {
+  const project = item && item.project ? item.project : await pickProject(store);
+  if (!project) {
+    return;
+  }
+  if (project.invalid || !(await exists(project.rootPath))) {
+    vscode.window.showWarningMessage(`Project path does not exist: ${project.rootPath}`);
+    return;
+  }
+  const cfg = store.config();
+  if (cfg.get('zellij.fastSwitchMode', 'zellij-only') === 'folder-only') {
+    await chooseAndOpenProject(store, false, { project });
+    return;
+  }
+  if (!cfg.get('zellij.enabled', false)) {
+    const openSettings = 'Open Settings';
+    const openWorkspace = 'Open Project in This Window';
+    const choice = await vscode.window.showInformationMessage(
+      'Managed Zellij project switching is disabled.',
+      openSettings,
+      openWorkspace
+    );
+    if (choice === openSettings) {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'shuvscode.projects.zellij.enabled');
+    } else if (choice === openWorkspace) {
+      await chooseAndOpenProject(store, false, { project });
+    }
+    return;
+  }
+
+  try {
+    await store.remember(project);
+    await ensureManagedZellijWithPrompt(manager);
+    const { tab, tabName } = await manager.ensureProjectTab(project);
+    await openManagedZellijTerminal(manager, project, { skipEnsure: true });
+    await delay(500);
+    await manager.focusTab(tab, tabName);
+    await activeProjects.write(project);
+    await provider.refresh();
+    await windowRegistry.update();
+    await updateStatus(status, store, activeProjects);
+    await updateZellijContext(manager);
+
+    if (cfg.get('zellij.fastSwitchMode', 'zellij-only') === 'zellij-then-folder') {
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.rootPath), false);
+    }
+  } catch (error) {
+    if (error && error.code !== 'USER_CANCELLED') {
+      showZellijError(error);
+    }
+  }
 }
 
 // --- Multiplexer convenience ---------------------------------------------
@@ -727,9 +1051,10 @@ async function maybeAutoOpenMultiplexerTerminal() {
  * fresh; entries older than HEARTBEAT_STALE_MS are pruned as dead.
  */
 class WindowRegistry {
-  constructor(ctx, store) {
+  constructor(ctx, store, activeProjects) {
     this.ctx = ctx;
     this.store = store;
+    this.activeProjects = activeProjects;
     this.windowId = crypto.randomBytes(6).toString('hex');
     this.pid = process.pid;
     this.disposed = false;
@@ -811,14 +1136,21 @@ class WindowRegistry {
       return;
     }
     const current = currentProject();
+    const active = this.activeProjects ? await this.activeProjects.read() : undefined;
     const now = Date.now();
     const entries = (await this.readAll()).filter(entry => entry && entry.windowId !== this.windowId);
-    if (current) {
+    if (current || active) {
+      const name = (active && active.name) || (current && current.name);
+      const rootPath = (current && current.rootPath) || (active && active.rootPath);
       entries.push({
         windowId: this.windowId,
         pid: this.pid,
-        name: current.name,
-        rootPath: normalizeFsPath(current.rootPath),
+        name,
+        rootPath: rootPath ? normalizeFsPath(rootPath) : undefined,
+        workspaceName: current && current.name,
+        workspaceRoot: current && normalizeFsPath(current.rootPath),
+        activeProjectName: active && active.name,
+        activeProjectRoot: active && normalizeFsPath(active.rootPath),
         updatedAt: now
       });
     }
@@ -833,14 +1165,22 @@ class WindowRegistry {
     }
     const now = Date.now();
     const entries = (await this.readAll())
-      .filter(entry => entry && entry.rootPath && entry.updatedAt && (now - entry.updatedAt) < HEARTBEAT_STALE_MS);
-    // De-dupe by rootPath (a folder is owned by at most one window).
+      .filter(entry => entry && (entry.workspaceRoot || entry.rootPath || entry.activeProjectRoot) && entry.updatedAt && (now - entry.updatedAt) < HEARTBEAT_STALE_MS);
+    // De-dupe by actual workspace root when possible (a folder is owned by at most one window).
     const byRoot = new Map();
     for (const entry of entries) {
-      const key = normalizeFsPath(entry.rootPath);
+      const workspaceRoot = entry.workspaceRoot || entry.rootPath;
+      const activeProjectRoot = entry.activeProjectRoot;
+      const key = normalizeFsPath(workspaceRoot || activeProjectRoot);
       const existing = byRoot.get(key);
       if (!existing || entry.updatedAt > existing.updatedAt) {
-        byRoot.set(key, { ...entry, rootPath: key });
+        byRoot.set(key, {
+          ...entry,
+          name: entry.name || entry.activeProjectName || entry.workspaceName,
+          rootPath: key,
+          workspaceRoot: workspaceRoot ? normalizeFsPath(workspaceRoot) : undefined,
+          activeProjectRoot: activeProjectRoot ? normalizeFsPath(activeProjectRoot) : undefined
+        });
       }
     }
     const list = [...byRoot.values()]
@@ -852,7 +1192,7 @@ class WindowRegistry {
         if (a.isCurrent !== b.isCurrent) {
           return a.isCurrent ? -1 : 1;
         }
-        return a.name.localeCompare(b.name);
+        return (a.name || '').localeCompare(b.name || '');
       });
 
     if (this.cacheChanged(list)) {
@@ -868,7 +1208,7 @@ class WindowRegistry {
     for (let i = 0; i < next.length; i++) {
       const a = next[i];
       const b = this.cache[i];
-      if (!b || a.windowId !== b.windowId || a.rootPath !== b.rootPath || a.isCurrent !== b.isCurrent || a.name !== b.name) {
+      if (!b || a.windowId !== b.windowId || a.rootPath !== b.rootPath || a.activeProjectRoot !== b.activeProjectRoot || a.isCurrent !== b.isCurrent || a.name !== b.name) {
         return true;
       }
     }

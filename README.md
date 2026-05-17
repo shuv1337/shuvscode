@@ -79,11 +79,13 @@ The built-in Projects extension provides:
 - workspace storage in `projects.json`
 - shared `windows.json` registry of open shuvscode windows with Switch-to-Window
 - first-class multiplexer terminal support (zellij, tmux, etc.)
+- managed Zellij project tabs for fast switching without a full workbench reload
 
 Relevant files:
 
 - `src/stable/extensions/shuvscode-projects/extension.js`
 - `src/stable/extensions/shuvscode-projects/package.json`
+- `src/stable/extensions/shuvscode-projects/zellij.js`
 
 ### Multiplexer terminals
 
@@ -107,6 +109,29 @@ tmux, neovim, btop, lazygit, …). For those the renderer skips the stale cell
 snapshot and the pty host delivers a real SIGWINCH so the inner process
 redraws from authoritative state instead of being overpainted.
 
+### Managed Zellij fast switching
+
+For deeper Zellij integration, enable managed Zellij mode:
+
+- `shuvscode.projects.zellij.enabled` — enables first-class Zellij project switching.
+- `shuvscode.projects.zellij.executablePath` — defaults to `zellij`; use `/usr/bin/zellij` if desktop-launched shuvscode has a reduced PATH.
+- `shuvscode.projects.zellij.sessionName` — defaults to `shuvscode-managed`.
+- `shuvscode.projects.zellij.autoStart` — creates/reuses the managed session on Projects activation.
+- `shuvscode.projects.zellij.openSharedTerminalOnStart` — optionally opens the shared `zellij: shuvscode-managed` terminal on activation.
+- `shuvscode.projects.defaultProjectAction` — keep `open-workspace` for normal VS Code folder loads, or choose `fast-switch` after validating the workflow.
+
+Commands:
+
+- `Projects: Fast Switch Project` creates or focuses a per-project Zellij tab and records it as the active project without calling `vscode.openFolder`.
+- `Projects: Open Managed Zellij Session` opens the shared integrated terminal attached to the managed session.
+- `Projects: Open Active Project as Workspace` converts the active Zellij project into a real VS Code workspace load when language services, Explorer, SCM, or extension context need to follow the project.
+
+The managed session is intentionally named `shuvscode-managed` to avoid colliding
+with user-created sessions. shuvscode records ownership metadata and will not
+kill, reset, or take over an unowned session without confirmation. A default
+Zellij `Tab #1` is reserved as the hub tab; project tabs are named from
+`${projectSlug}` by default.
+
 ## Built-in extensions
 
 `shuvscode.product.json` bakes in a small set of native-feeling extensions:
@@ -122,6 +147,8 @@ Useful checks after touching docs or build metadata:
 ```bash
 ./shuvscode-linux-x64/bin/shuvscode --version
 node --check src/stable/extensions/shuvscode-projects/extension.js
+node --check src/stable/extensions/shuvscode-projects/zellij.js
+node --test src/stable/extensions/shuvscode-projects/zellij.test.js
 jq . src/stable/extensions/shuvscode-projects/package.json >/dev/null
 ```
 
