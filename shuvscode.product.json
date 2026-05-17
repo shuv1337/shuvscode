@@ -8,20 +8,16 @@
   "darwinApplicationCategoryType": "public.app-category.developer-tools",
   "quality": "stable",
   "urlProtocol": "shuvscode",
-
   "serverApplicationName": "shuvscode-server",
   "serverDataFolderName": ".shuvscode-server",
   "tunnelApplicationName": "shuvscode-tunnel",
-
   "reportIssueUrl": "https://github.com/shuv1337/shuvscode/issues/new",
   "requestFeatureUrl": "https://github.com/shuv1337/shuvscode/issues/new",
   "licenseUrl": "https://github.com/shuv1337/shuvscode/blob/shuvscode-main/LICENSE",
-
   "linkProtectionTrustedDomains": [
     "https://open-vsx.org",
     "https://github.com/shuv1337/shuvscode"
   ],
-
   "configurationDefaults": {
     "extensions.autoCheckUpdates": false,
     "extensions.autoUpdate": false,
@@ -29,14 +25,12 @@
     "workbench.enableExperiments": false,
     "telemetry.telemetryLevel": "off"
   },
-
   "extensionTips": {},
   "extensionImportantTips": {},
   "keymapExtensionTips": [],
   "languageExtensionTips": [],
   "configBasedExtensionTips": {},
   "extensionKeywords": {},
-
   "builtInExtensions": [
     {
       "name": "detachhead.basedpyright",
@@ -69,13 +63,66 @@
         },
         "publisherDisplayName": "EditorConfig"
       }
+    },
+    {
+      "name": "GitHub.vscode-pull-request-github",
+      "version": "0.144.0",
+      "sha256": "c9358907d2d3a3a70989e264b362a66b8b4f31f718115902dec2a513ec64c372",
+      "repo": "https://github.com/microsoft/vscode-pull-request-github",
+      "vsix": "../assets/extensions/GitHub.vscode-pull-request-github-0.144.0.vsix",
+      "metadata": {
+        "id": "69ddd764-339a-4ecc-97c1-9c4ece58e36d",
+        "publisherId": {
+          "publisherId": "github",
+          "publisherName": "GitHub",
+          "displayName": "GitHub",
+          "flags": "verified"
+        },
+        "publisherDisplayName": "GitHub"
+      }
     }
   ],
-
   "extensionEnabledApiProposals": {
     "jeanp413.open-remote-ssh": [
       "resolvers",
       "contribViewsRemote"
+    ],
+    "GitHub.vscode-pull-request-github": [
+      "activeComment",
+      "chatContextProvider",
+      "chatParticipantAdditions",
+      "chatParticipantPrivate",
+      "chatSessionsProvider",
+      "codiconDecoration",
+      "codeActionRanges",
+      "commentingRangeHint",
+      "commentReactor",
+      "commentReveal",
+      "commentsDraftState",
+      "commentThreadApplicability",
+      "contribAccessibilityHelpContent",
+      "contribCommentEditorActionsMenu",
+      "contribCommentPeekContext",
+      "contribCommentThreadAdditionalMenu",
+      "contribCommentsViewThreadMenus",
+      "contribEditorContentMenu",
+      "contribShareMenu",
+      "diffCommand",
+      "languageModelToolResultAudience",
+      "markdownAlertSyntax",
+      "quickDiffProvider",
+      "remoteCodingAgents",
+      "shareProvider",
+      "tabInputMultiDiff",
+      "tokenInformation",
+      "treeItemMarkdownLabel",
+      "treeViewMarkdownMessage"
     ]
-  }
+  },
+  "trustedExtensionPublishers": [
+    "detachhead",
+    "editorconfig",
+    "github",
+    "shuvscode"
+  ]
 }

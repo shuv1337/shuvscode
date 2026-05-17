@@ -1,0 +1,148 @@
+--- a/src/vs/workbench/browser/layout.ts
++++ b/src/vs/workbench/browser/layout.ts
+@@ -446,6 +446,11 @@
+ 					this.setAuxiliaryBarMaximized(false);
+ 				}
+ 			}
++
++			if (e.affectsConfiguration(WorkbenchLayoutSettings.BOTTOM_PANE_SPLIT_WITH_SECONDARY_SIDE_BAR) && this.workbenchGrid) {
++				this.adjustPartPositions(this.getSideBarPosition(), this.getPanelAlignment(), this.getPanelPosition());
++				this.layout();
++			}
+ 		}));
+ 
+ 		// Fullscreen changes
+@@ -1934,12 +1939,17 @@
+ 		return viewContainerModel.activeViewDescriptors.length >= 1;
+ 	}
+ 
++	private isAuxiliaryBarSplitWithPanel(panelPosition = this.getPanelPosition()): boolean {
++		return isHorizontal(panelPosition) && this.configurationService.getValue<boolean>(WorkbenchLayoutSettings.BOTTOM_PANE_SPLIT_WITH_SECONDARY_SIDE_BAR) === true;
++	}
++
+ 	private adjustPartPositions(sideBarPosition: Position, panelAlignment: PanelAlignment, panelPosition: Position): void {
+ 
+ 		// Move activity bar and side bars
+ 		const isPanelVertical = !isHorizontal(panelPosition);
++		const splitAuxiliaryBarWithPanel = this.isAuxiliaryBarSplitWithPanel(panelPosition);
+ 		const sideBarSiblingToEditor = isPanelVertical || !(panelAlignment === 'center' || (sideBarPosition === Position.LEFT && panelAlignment === 'right') || (sideBarPosition === Position.RIGHT && panelAlignment === 'left'));
+-		const auxiliaryBarSiblingToEditor = isPanelVertical || !(panelAlignment === 'center' || (sideBarPosition === Position.RIGHT && panelAlignment === 'right') || (sideBarPosition === Position.LEFT && panelAlignment === 'left'));
++		const auxiliaryBarSiblingToEditor = !splitAuxiliaryBarWithPanel && (isPanelVertical || !(panelAlignment === 'center' || (sideBarPosition === Position.RIGHT && panelAlignment === 'right') || (sideBarPosition === Position.LEFT && panelAlignment === 'left')));
+ 		const preMovePanelWidth = !this.isVisible(Parts.PANEL_PART) ? Sizing.Invisible(this.workbenchGrid.getViewCachedVisibleSize(this.panelPartView) ?? this.panelPartView.minimumWidth) : this.workbenchGrid.getViewSize(this.panelPartView).width;
+ 		const preMovePanelHeight = !this.isVisible(Parts.PANEL_PART) ? Sizing.Invisible(this.workbenchGrid.getViewCachedVisibleSize(this.panelPartView) ?? this.panelPartView.minimumHeight) : this.workbenchGrid.getViewSize(this.panelPartView).height;
+ 		const preMoveSideBarSize = !this.isVisible(Parts.SIDEBAR_PART) ? Sizing.Invisible(this.workbenchGrid.getViewCachedVisibleSize(this.sideBarPartView) ?? this.sideBarPartView.minimumWidth) : this.workbenchGrid.getViewSize(this.sideBarPartView).width;
+@@ -1950,7 +1960,9 @@
+ 		if (sideBarPosition === Position.LEFT) {
+ 			this.workbenchGrid.moveViewTo(this.activityBarPartView, [2, 0]);
+ 			this.workbenchGrid.moveView(this.sideBarPartView, preMoveSideBarSize, sideBarSiblingToEditor ? this.editorPartView : this.activityBarPartView, sideBarSiblingToEditor ? Direction.Left : Direction.Right);
+-			if (auxiliaryBarSiblingToEditor) {
++			if (splitAuxiliaryBarWithPanel) {
++				this.workbenchGrid.moveView(this.auxiliaryBarPartView, preMoveAuxiliaryBarSize, this.panelPartView, Direction.Right);
++			} else if (auxiliaryBarSiblingToEditor) {
+ 				this.workbenchGrid.moveView(this.auxiliaryBarPartView, preMoveAuxiliaryBarSize, this.editorPartView, Direction.Right);
+ 			} else {
+ 				this.workbenchGrid.moveViewTo(this.auxiliaryBarPartView, [2, -1]);
+@@ -1958,7 +1970,9 @@
+ 		} else {
+ 			this.workbenchGrid.moveViewTo(this.activityBarPartView, [2, -1]);
+ 			this.workbenchGrid.moveView(this.sideBarPartView, preMoveSideBarSize, sideBarSiblingToEditor ? this.editorPartView : this.activityBarPartView, sideBarSiblingToEditor ? Direction.Right : Direction.Left);
+-			if (auxiliaryBarSiblingToEditor) {
++			if (splitAuxiliaryBarWithPanel) {
++				this.workbenchGrid.moveView(this.auxiliaryBarPartView, preMoveAuxiliaryBarSize, this.panelPartView, Direction.Left);
++			} else if (auxiliaryBarSiblingToEditor) {
+ 				this.workbenchGrid.moveView(this.auxiliaryBarPartView, preMoveAuxiliaryBarSize, this.editorPartView, Direction.Left);
+ 			} else {
+ 				this.workbenchGrid.moveViewTo(this.auxiliaryBarPartView, [2, 0]);
+@@ -2518,6 +2532,7 @@
+ 
+ 		const panelPostion = this.stateModel.getRuntimeValue(LayoutStateKeys.PANEL_POSITION);
+ 		const sideBarPosition = this.stateModel.getRuntimeValue(LayoutStateKeys.SIDEBAR_POSITON);
++		const splitAuxiliaryBarWithPanel = this.isAuxiliaryBarSplitWithPanel(panelPostion);
+ 
+ 		const result = [] as ISerializedNode[];
+ 		if (!isHorizontal(panelPostion)) {
+@@ -2541,7 +2556,7 @@
+ 		} else {
+ 			const panelAlignment = this.stateModel.getRuntimeValue(LayoutStateKeys.PANEL_ALIGNMENT);
+ 			const sideBarNextToEditor = !(panelAlignment === 'center' || (sideBarPosition === Position.LEFT && panelAlignment === 'right') || (sideBarPosition === Position.RIGHT && panelAlignment === 'left'));
+-			const auxiliaryBarNextToEditor = !(panelAlignment === 'center' || (sideBarPosition === Position.RIGHT && panelAlignment === 'right') || (sideBarPosition === Position.LEFT && panelAlignment === 'left'));
++			const auxiliaryBarNextToEditor = !splitAuxiliaryBarWithPanel && !(panelAlignment === 'center' || (sideBarPosition === Position.RIGHT && panelAlignment === 'right') || (sideBarPosition === Position.LEFT && panelAlignment === 'left'));
+ 
+ 			const editorSectionWidth = availableWidth - activityBarSize - (sideBarNextToEditor ? 0 : sideBarSize) - (auxiliaryBarNextToEditor ? 0 : auxiliaryBarSize);
+ 
+@@ -2551,7 +2566,10 @@
+ 				auxiliaryBar: auxiliaryBarNextToEditor ? nodes.auxiliaryBar : undefined
+ 			}, availableHeight - panelSize, editorSectionWidth);
+ 
+-			const data = panelPostion === Position.BOTTOM ? [editorNodes, nodes.panel] : [nodes.panel, editorNodes];
++			const panelRow = splitAuxiliaryBarWithPanel
++				? this.arrangeSplitPanelNodes(nodes.panel, nodes.auxiliaryBar, editorSectionWidth, auxiliaryBarSize, panelSize, sideBarPosition)
++				: nodes.panel;
++			const data = panelPostion === Position.BOTTOM ? [editorNodes, panelRow] : [panelRow, editorNodes];
+ 			result.push({
+ 				type: 'branch',
+ 				data,
+@@ -2585,6 +2603,22 @@
+ 		return result;
+ 	}
+ 
++	private arrangeSplitPanelNodes(panelNode: ISerializedNode, auxiliaryBarNode: ISerializedNode, availableWidth: number, auxiliaryBarSize: number, panelSize: number, sideBarPosition: Position): ISerializedNode {
++		panelNode.size = Math.max(0, availableWidth - auxiliaryBarSize);
++		auxiliaryBarNode.size = auxiliaryBarSize;
++
++		const data = sideBarPosition === Position.LEFT
++			? [panelNode, auxiliaryBarNode]
++			: [auxiliaryBarNode, panelNode];
++
++		return {
++			type: 'branch',
++			data,
++			size: panelSize,
++			visible: data.some(node => node.visible)
++		};
++	}
++
+ 	private createGridDescriptor(): ISerializedGrid {
+ 		const { width, height } = this._mainContainerDimension;
+ 		const sideBarSize = this.stateModel.getInitializationValue(LayoutStateKeys.SIDEBAR_SIZE);
+@@ -2839,6 +2873,7 @@
+ 	ACTIVITY_BAR_VISIBLE = 'workbench.activityBar.visible',
+ 	PANEL_POSITION = 'workbench.panel.defaultLocation',
+ 	PANEL_OPENS_MAXIMIZED = 'workbench.panel.opensMaximized',
++	BOTTOM_PANE_SPLIT_WITH_SECONDARY_SIDE_BAR = 'workbench.bottomPane.experimental.splitWithSecondarySideBar',
+ 	ZEN_MODE_CONFIG = 'zenMode',
+ 	EDITOR_CENTERED_LAYOUT_AUTO_RESIZE = 'workbench.editor.centeredLayoutAutoResize',
+ 	EDITOR_RESTORE_EDITORS = 'workbench.editor.restoreEditors',
+--- a/src/vs/workbench/browser/workbench.contribution.ts
++++ b/src/vs/workbench/browser/workbench.contribution.ts
+@@ -755,6 +755,12 @@
+ 				markdownDescription: localize('bottomPaneFontSize', "Controls the font size in pixels for the bottom panel."),
+ 				'tags': ['accessibility', 'experimental']
+ 			},
++			'workbench.bottomPane.experimental.splitWithSecondarySideBar': {
++				type: 'boolean',
++				default: false,
++				markdownDescription: localize('bottomPaneSplitWithSecondarySideBar', "Controls whether the secondary side bar is laid out beside the bottom/top panel instead of beside the editor. Enable this to keep one panel item (for example Terminal) visible next to another view container (for example Source Control moved to the secondary side bar)."),
++				'tags': ['experimental']
++			},
+ 			'workbench.sideBar.experimental.fontFamily': {
+ 				type: 'string',
+ 				default: '',
+--- a/src/vs/workbench/contrib/telemetry/browser/telemetry.contribution.ts
++++ b/src/vs/workbench/contrib/telemetry/browser/telemetry.contribution.ts
+@@ -393,6 +393,15 @@
+ 				}>('workbench.secondarySideBar.defaultVisibility', { settingValue: this.getValueToReport(key, target), source });
+ 				return;
+ 
++			case 'workbench.bottomPane.experimental.splitWithSecondarySideBar':
++				this.telemetryService.publicLog2<UpdatedSettingEvent, {
++					owner: 'shuvscode';
++					comment: 'This is used to know if the bottom pane is split with the secondary side bar';
++					settingValue: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; comment: 'value of the setting' };
++					source: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; comment: 'source of the setting' };
++				}>('workbench.bottomPane.experimental.splitWithSecondarySideBar', { settingValue: this.getValueToReport(key, target), source });
++				return;
++
+ 			case VerifyExtensionSignatureConfigKey:
+ 				this.telemetryService.publicLog2<UpdatedSettingEvent, {
+ 					owner: 'sandy081';

@@ -28,3 +28,4 @@ This repository packages a branded Linux x64 build of VS Code/VSCodium as `shuvs
 
 - A basic launch smoke test is: `./shuvscode-linux-x64/bin/shuvscode --version`.
 - GUI smoke checks from `HANDOFF.md`: welcome suppression, extension activation, Open VSX install, first-run defaults.
+- For local VSIX-backed entries in `shuvscode.product.json`, the `vsix` path is resolved by VS Code's build from the vendored `vscode/` tree root, not this repository root. Use `../assets/extensions/...` for files stored in this repo's top-level `assets/extensions/` directory.
