@@ -1,5 +1,6 @@
 :root {
   --canvas-bg: #0F1421;
+  --canvas-pane: #011627;
   --canvas-surface: #1A2032;
   --canvas-surface-elevated: #202740;
   --canvas-border: rgba(255, 255, 255, 0.06);
@@ -61,9 +62,21 @@
 .monaco-workbench.shuvscode-canvas .part.panel > .content,
 .monaco-workbench.shuvscode-canvas .part.auxiliarybar > .content {
   border-radius: var(--canvas-radius);
-  background: var(--canvas-surface);
+  background: var(--canvas-pane);
   border: 1px solid var(--canvas-border);
   overflow: hidden;
+}
+
+.monaco-workbench.shuvscode-canvas .part.sidebar > .content .composite,
+.monaco-workbench.shuvscode-canvas .part.sidebar > .content .pane-composite-part,
+.monaco-workbench.shuvscode-canvas .part.sidebar > .content .pane-body,
+.monaco-workbench.shuvscode-canvas .part.panel > .content .composite,
+.monaco-workbench.shuvscode-canvas .part.panel > .content .pane-composite-part,
+.monaco-workbench.shuvscode-canvas .part.panel > .content .pane-body,
+.monaco-workbench.shuvscode-canvas .part.auxiliarybar > .content .composite,
+.monaco-workbench.shuvscode-canvas .part.auxiliarybar > .content .pane-composite-part,
+.monaco-workbench.shuvscode-canvas .part.auxiliarybar > .content .pane-body {
+  background: var(--canvas-pane);
 }
 
 /* Keep the branded frame from covering the final row of terminal/sidebar content. */
