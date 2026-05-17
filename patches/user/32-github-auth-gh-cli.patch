@@ -41,21 +41,25 @@ index 00000000000..14a970e2fce
 +	return [];
 +}
 diff --git i/extensions/github-authentication/src/flows.ts w/extensions/github-authentication/src/flows.ts
-index febf2b69b60..d421f5b863b 100644
+index febf2b69b60..15e11c18ee8 100644
 --- i/extensions/github-authentication/src/flows.ts
 +++ w/extensions/github-authentication/src/flows.ts
-@@ -14,6 +14,7 @@ import { LoopbackAuthServer } from './node/authServer';
+@@ -13,7 +13,8 @@ import { crypto } from './node/crypto';
+ import { LoopbackAuthServer } from './node/authServer';
  import { promiseFromEvent } from './common/utils';
  import { isHostedGitHubEnterprise } from './common/env';
- import { NETWORK_ERROR, TIMED_OUT_ERROR, USER_CANCELLATION_ERROR } from './common/errors';
+-import { NETWORK_ERROR, TIMED_OUT_ERROR, USER_CANCELLATION_ERROR } from './common/errors';
++import { CANCELLATION_ERROR, NETWORK_ERROR, TIMED_OUT_ERROR, USER_CANCELLATION_ERROR } from './common/errors';
 +import { findMissingScopes, getGhCliToken, GhCliError, isGhCliAvailable } from './node/ghCli';
  
  interface IGitHubDeviceCodeResponse {
- 	device_code: string;
-@@ -519,6 +520,68 @@ class DeviceCodeFlow implements IFlow {
- 	}
+     device_code: string;
+@@ -519,6 +520,75 @@ class DeviceCodeFlow implements IFlow {
+     }
  }
  
++export const GH_CLI_USE_BROWSER_ERROR = 'GitHub CLI Use Browser Instead';
++
 +// shuvscode: GhCliFlow consumes the system `gh` CLI to satisfy a session
 +// request without launching a browser. It is gated behind a runtime
 +// availability check in getFlows() so it is only listed when `gh` is on
@@ -109,8 +113,13 @@ index febf2b69b60..d421f5b863b 100644
 +				const term = window.createTerminal({ name: 'gh auth refresh' });
 +				term.show(true);
 +				term.sendText(`gh auth refresh -s ${missing.join(',')}`, false);
++				throw new Error(CANCELLATION_ERROR);
 +			}
-+			throw new Error(`gh CLI token missing scopes: ${missing.join(', ')}`);
++			if (choice === browserLabel) {
++				logger.info('User chose browser auth after gh CLI missing-scope warning.');
++				throw new Error(GH_CLI_USE_BROWSER_ERROR);
++			}
++			throw new Error(CANCELLATION_ERROR);
 +		}
 +
 +		logger.info(`gh CLI flow succeeded for ${result.user}`);
@@ -119,19 +128,19 @@ index febf2b69b60..d421f5b863b 100644
 +}
 +
  class PatFlow implements IFlow {
- 	label = l10n.t('personal access token');
- 	options: IFlowOptions = {
-@@ -604,14 +667,29 @@ class PatFlow implements IFlow {
- 	}
+     label = l10n.t('personal access token');
+     options: IFlowOptions = {
+@@ -604,14 +674,29 @@ class PatFlow implements IFlow {
+     }
  }
  
 +const ghCliFlow = new GhCliFlow();
  const allFlows: IFlow[] = [
 +	ghCliFlow,
- 	new LocalServerFlow(),
- 	new UrlHandlerFlow(),
- 	new DeviceCodeFlow(),
- 	new PatFlow()
+     new LocalServerFlow(),
+     new UrlHandlerFlow(),
+     new DeviceCodeFlow(),
+     new PatFlow()
  ];
  
 -export function getFlows(query: IFlowQuery) {
@@ -149,12 +158,12 @@ index febf2b69b60..d421f5b863b 100644
 +}
 +
 +export async function getFlows(query: IFlowQuery) {
- 	const validFlows = allFlows.filter(flow => {
- 		let useFlow: boolean = true;
- 		switch (query.target) {
-@@ -649,15 +727,26 @@ export function getFlows(query: IFlowQuery) {
- 		return useFlow;
- 	});
+     const validFlows = allFlows.filter(flow => {
+         let useFlow: boolean = true;
+         switch (query.target) {
+@@ -649,15 +734,26 @@ export function getFlows(query: IFlowQuery) {
+         return useFlow;
+     });
  
 +	// shuvscode: drop GhCliFlow when `gh` is not installed; this prevents
 +	// the inter-flow 'try a different way?' prompt from appearing on
@@ -167,15 +176,15 @@ index febf2b69b60..d421f5b863b 100644
 +		}
 +	}
 +
- 	const preferDeviceCodeFlow = workspace.getConfiguration('github-authentication').get<boolean>('preferDeviceCodeFlow', false);
- 	if (preferDeviceCodeFlow) {
- 		return [
+     const preferDeviceCodeFlow = workspace.getConfiguration('github-authentication').get<boolean>('preferDeviceCodeFlow', false);
+     if (preferDeviceCodeFlow) {
+         return [
 -			...validFlows.filter(flow => flow instanceof DeviceCodeFlow),
 -			...validFlows.filter(flow => !(flow instanceof DeviceCodeFlow))
 +			...filtered.filter(flow => flow instanceof DeviceCodeFlow),
 +			...filtered.filter(flow => !(flow instanceof DeviceCodeFlow))
- 		];
- 	}
+         ];
+     }
  
 -	return validFlows;
 +	return filtered;
@@ -186,15 +195,35 @@ diff --git i/extensions/github-authentication/src/githubServer.ts w/extensions/g
 index b8646696a8a..16c370af4fd 100644
 --- i/extensions/github-authentication/src/githubServer.ts
 +++ w/extensions/github-authentication/src/githubServer.ts
+@@ -10,7 +10,7 @@ import { Log } from './common/logger';
+ import { isSupportedClient, isSupportedTarget } from './common/env';
+ import { crypto } from './node/crypto';
+ import { fetching } from './node/fetch';
+-import { ExtensionHost, GitHubSocialSignInProvider, GitHubTarget, getFlows } from './flows';
++import { ExtensionHost, GH_CLI_USE_BROWSER_ERROR, GitHubSocialSignInProvider, GitHubTarget, getFlows } from './flows';
+ import { CANCELLATION_ERROR, NETWORK_ERROR, USER_CANCELLATION_ERROR } from './common/errors';
+ import { Config } from './config';
+ import { base64Encode } from './node/buffer';
 @@ -115,7 +115,7 @@ export class GitHubServer implements IGitHubServer {
- 		const supportedTarget = isSupportedTarget(this._type, this._ghesUri);
+         const supportedTarget = isSupportedTarget(this._type, this._ghesUri);
  
- 		const isNodeEnvironment = typeof process !== 'undefined' && typeof process?.versions?.node === 'string';
+         const isNodeEnvironment = typeof process !== 'undefined' && typeof process?.versions?.node === 'string';
 -		const flows = getFlows({
 +		const flows = await getFlows({
- 			target: this._type === AuthProviderType.github
- 				? GitHubTarget.DotCom
- 				: supportedTarget ? GitHubTarget.HostedEnterprise : GitHubTarget.Enterprise,
+             target: this._type === AuthProviderType.github
+                 ? GitHubTarget.DotCom
+                 : supportedTarget ? GitHubTarget.HostedEnterprise : GitHubTarget.Enterprise,
+@@ -144,6 +144,10 @@ export class GitHubServer implements IGitHubServer {
+                             existingLogin
+                     });
+                 } catch (e) {
++				if (e instanceof Error && e.message === GH_CLI_USE_BROWSER_ERROR) {
++					userCancelled = undefined;
++					continue;
++				}
+                     userCancelled = this.processLoginError(e);
+                 }
+             }
 diff --git i/extensions/github-authentication/src/node/ghCli.ts w/extensions/github-authentication/src/node/ghCli.ts
 new file mode 100644
 index 00000000000..04cfeb0a4cb
@@ -382,40 +411,40 @@ index fdcdd0f3f45..c63a4a12588 100644
 --- i/extensions/github-authentication/src/test/flows.test.ts
 +++ w/extensions/github-authentication/src/test/flows.test.ts
 @@ -178,8 +178,8 @@ suite('getFlows', () => {
- 	];
+     ];
  
- 	for (const testCase of testCases) {
+     for (const testCase of testCases) {
 -		test(`gives the correct flows - ${testCase.label}`, () => {
 -			const flows = getFlows(testCase.query);
 +		test(`gives the correct flows - ${testCase.label}`, async () => {
 +			const flows = await getFlows(testCase.query);
  
- 			assert.strictEqual(
- 				flows.length,
+             assert.strictEqual(
+                 flows.length,
 @@ -212,7 +212,7 @@ suite('getFlows', () => {
- 			const config = vscode.workspace.getConfiguration('github-authentication');
- 			await config.update('preferDeviceCodeFlow', true, vscode.ConfigurationTarget.Global);
+             const config = vscode.workspace.getConfiguration('github-authentication');
+             await config.update('preferDeviceCodeFlow', true, vscode.ConfigurationTarget.Global);
  
 -			const flows = getFlows({
 +			const flows = await getFlows({
- 				extensionHost: ExtensionHost.Local,
- 				isSupportedClient: true,
- 				target: GitHubTarget.DotCom
+                 extensionHost: ExtensionHost.Local,
+                 isSupportedClient: true,
+                 target: GitHubTarget.DotCom
 @@ -230,7 +230,7 @@ suite('getFlows', () => {
- 			const config = vscode.workspace.getConfiguration('github-authentication');
- 			await config.update('preferDeviceCodeFlow', true, vscode.ConfigurationTarget.Global);
+             const config = vscode.workspace.getConfiguration('github-authentication');
+             await config.update('preferDeviceCodeFlow', true, vscode.ConfigurationTarget.Global);
  
 -			const flows = getFlows({
 +			const flows = await getFlows({
- 				extensionHost: ExtensionHost.Remote,
- 				isSupportedClient: true,
- 				target: GitHubTarget.DotCom
+                 extensionHost: ExtensionHost.Remote,
+                 isSupportedClient: true,
+                 target: GitHubTarget.DotCom
 @@ -246,7 +246,7 @@ suite('getFlows', () => {
- 			const config = vscode.workspace.getConfiguration('github-authentication');
- 			await config.update('preferDeviceCodeFlow', true, vscode.ConfigurationTarget.Global);
+             const config = vscode.workspace.getConfiguration('github-authentication');
+             await config.update('preferDeviceCodeFlow', true, vscode.ConfigurationTarget.Global);
  
 -			const flows = getFlows({
 +			const flows = await getFlows({
- 				extensionHost: ExtensionHost.WebWorker,
- 				isSupportedClient: true,
- 				target: GitHubTarget.DotCom
+                 extensionHost: ExtensionHost.WebWorker,
+                 isSupportedClient: true,
+                 target: GitHubTarget.DotCom

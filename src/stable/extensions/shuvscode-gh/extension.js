@@ -1,5 +1,5 @@
 // shuvscode-gh: lightweight GitHub helper that fills in the missing
-// `github:login` empty states for the bundled GitHub Pull Requests
+// `github:login` sign-in surface for the bundled GitHub Pull Requests
 // extension, and surfaces the system `gh` CLI when available.
 //
 // This extension never holds tokens itself. Sign-in always goes through
@@ -8,17 +8,11 @@
 // `gh auth token` value on the auth-provider side; this extension just
 // improves discoverability + the welcome UX.
 //
-// Why we register a TreeDataProvider for `github:login`:
-//   VS Code only renders `viewsWelcome` content for a view when SOME
-//   extension has registered a TreeDataProvider for that view and the
-//   provider returns an empty array. With no TDP registered at all, VS
-//   Code shows the raw fallback string "There is no data provider
-//   registered that can provide view data." -- which is the exact bug
-//   we're working around. The upstream PR extension only conditionally
-//   registers its TDP for `github:login`, so we register a no-op TDP as
-//   an unconditional placeholder. If upstream registers its own TDP
-//   later, VS Code overwrites ours, and our welcome contributions stop
-//   matching (they're gated on context keys that upstream's flows set).
+// Why we register a real TreeDataProvider for `github:login`:
+//   shuvscode strips VS Code's welcome-view contribution from the workbench,
+//   so `viewsWelcome` entries are intentionally unavailable. Returning real
+//   tree items keeps the GitHub login view useful instead of showing either a
+//   raw "no data provider" fallback or a blank panel.
 
 const { execFile } = require('child_process');
 const vscode = require('vscode');
@@ -31,6 +25,7 @@ const CTX_AUTHENTICATED = 'shuvscode.gh.authenticated';
 const DEFAULT_SCOPES = ['read:user', 'user:email', 'repo', 'workflow'];
 
 let output;
+let loginProvider;
 
 function log(line) {
   if (!output) {
@@ -93,8 +88,12 @@ async function detectGh() {
   }
   await vscode.commands.executeCommand('setContext', CTX_AUTHENTICATED, authenticated);
 
+  const state = { detected, authenticated, user };
+  if (loginProvider) {
+    loginProvider.setState(state);
+  }
   log(`gh detected=${detected} authenticated=${authenticated} user=${user || '<none>'}`);
-  return { detected, authenticated, user };
+  return state;
 }
 
 async function signIn() {
@@ -134,31 +133,78 @@ async function openInBrowser() {
   }
 }
 
-/**
- * Register an empty no-op TreeDataProvider for the `github:login` view so
- * that VS Code renders our `viewsWelcome` contributions instead of falling
- * back to the raw "no data provider" string. See the file-header comment.
- */
-function registerEmptyProvider(ctx, viewId) {
+class LoginItem extends vscode.TreeItem {
+  constructor(label, description, command, icon = 'github') {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.description = description;
+    this.iconPath = new vscode.ThemeIcon(icon);
+    if (command) {
+      this.command = {
+        command,
+        title: label
+      };
+    }
+  }
+}
+
+class GitHubLoginProvider {
+  constructor() {
+    this.state = { loading: true, detected: false, authenticated: false, user: null };
+    this.emitter = new vscode.EventEmitter();
+    this.onDidChangeTreeData = this.emitter.event;
+  }
+
+  setState(state) {
+    this.state = { loading: false, ...state };
+    this.emitter.fire();
+  }
+
+  getTreeItem(item) {
+    return item;
+  }
+
+  getChildren() {
+    if (this.state.loading) {
+      return [
+        new LoginItem('Checking GitHub CLI', 'Detecting gh on PATH', undefined, 'loading~spin'),
+        new LoginItem('Sign in to GitHub', 'Use browser auth', 'shuvscode.gh.signIn', 'sign-in')
+      ];
+    }
+    if (!this.state.detected) {
+      return [
+        new LoginItem('Sign in to GitHub', 'Use browser auth', 'shuvscode.gh.signIn', 'sign-in'),
+        new LoginItem('Install or configure gh CLI', 'Run gh auth login in a terminal', 'shuvscode.gh.openTerminal', 'terminal')
+      ];
+    }
+    if (!this.state.authenticated) {
+      return [
+        new LoginItem('Sign in with gh CLI', 'Run gh auth login', 'shuvscode.gh.openTerminal', 'terminal'),
+        new LoginItem('Sign in with browser', 'Use GitHub browser auth', 'shuvscode.gh.signIn', 'sign-in')
+      ];
+    }
+    return [
+      new LoginItem('Use gh CLI account', this.state.user ? `Signed in as ${this.state.user}` : 'Signed in with gh CLI', 'shuvscode.gh.signIn', 'github'),
+      new LoginItem('Refresh gh CLI detection', 'Check current gh auth state', 'shuvscode.gh.refreshDetection', 'refresh'),
+      new LoginItem('Open GitHub profile', 'Open in browser', 'shuvscode.gh.openInBrowser', 'link-external')
+    ];
+  }
+}
+
+function registerLoginProvider(ctx, viewId) {
   try {
-    const disposable = vscode.window.registerTreeDataProvider(viewId, {
-      getChildren: () => [],
-      getTreeItem: item => item,
-      getParent: () => null,
-    });
+    loginProvider = new GitHubLoginProvider();
+    const disposable = vscode.window.registerTreeDataProvider(viewId, loginProvider);
     ctx.subscriptions.push(disposable);
-    log(`registered placeholder TreeDataProvider for ${viewId}`);
+    log(`registered login TreeDataProvider for ${viewId}`);
   } catch (e) {
-    log(`failed to register placeholder TreeDataProvider for ${viewId}: ${e && e.message || e}`);
+    log(`failed to register login TreeDataProvider for ${viewId}: ${e && e.message || e}`);
   }
 }
 
 function activate(ctx) {
   log('activating shuvscode-gh');
 
-  // Ensure VS Code renders welcome content for the GitHub login view even
-  // when the upstream PR extension hasn't registered its own TDP yet.
-  registerEmptyProvider(ctx, 'github:login');
+  registerLoginProvider(ctx, 'github:login');
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand('shuvscode.gh.signIn', signIn),
