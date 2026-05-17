@@ -1512,6 +1512,7 @@ export class CommandCenter {
 
 			const config = workspace.getConfiguration('git', Uri.file(repository.root));
 			const hunkCommand = config.get<string>('hunkCommand', 'hunk') || 'hunk';
+			const hunkTheme = config.get<string>('hunkTheme', 'night-owl')?.trim();
 
 			let canLaunch = verifiedHunkCommands.get(hunkCommand);
 			if (canLaunch === undefined) {
@@ -1524,9 +1525,10 @@ export class CommandCenter {
 				continue;
 			}
 
+			const themeArgs = hunkTheme ? ['--theme', hunkTheme] : [];
 			const shellArgs = resource.resourceGroupType === ResourceGroupType.Index
-				? ['diff', '--staged', '--', relativeResourcePath]
-				: ['diff', '--', relativeResourcePath];
+				? ['diff', '--staged', ...themeArgs, '--', relativeResourcePath]
+				: ['diff', ...themeArgs, '--', relativeResourcePath];
 			const terminal = window.createTerminal({
 				name: `Hunk: ${path.basename(relativeResourcePath)}`,
 				shellPath: hunkCommand,

@@ -280,6 +280,7 @@
 	"config.openDiffOnClick": "Controls whether the diff editor should be opened when clicking a change. Otherwise the regular editor will be opened.",
 	"config.openHunkDiffOnClick": "Controls whether Hunk should be opened in an editor terminal when clicking a change.",
 	"config.hunkCommand": "Path or command name used to launch Hunk from the Git changes view.",
+	"config.hunkTheme": "Theme passed to Hunk from the Git changes view. Leave empty to let Hunk use its own configuration.",
 	"config.supportCancellation": "Controls whether a notification comes up when running the Sync action, which allows the user to cancel the operation.",
 	"config.branchSortOrder": "Controls the sort order for branches.",
 	"config.untrackedChanges": "Controls how untracked changes behave.",

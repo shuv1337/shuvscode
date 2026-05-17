@@ -3927,6 +3927,12 @@
           "default": "hunk",
           "description": "%config.hunkCommand%"
         },
+        "git.hunkTheme": {
+          "type": "string",
+          "scope": "resource",
+          "default": "night-owl",
+          "description": "%config.hunkTheme%"
+        },
         "git.supportCancellation": {
           "type": "boolean",
           "scope": "resource",
