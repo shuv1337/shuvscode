@@ -3933,6 +3933,12 @@
           "default": "night-owl",
           "description": "%config.hunkTheme%"
         },
+        "git.hunkEditorCleanMode": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": true,
+          "description": "%config.hunkEditorCleanMode%"
+        },
         "git.supportCancellation": {
           "type": "boolean",
           "scope": "resource",
