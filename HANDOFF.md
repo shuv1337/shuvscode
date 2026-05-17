@@ -6,6 +6,8 @@
   - dense split layout support for bottom/side workbench regions
   - trusted built-in extension publishers
   - bundled GitHub Pull Requests and Issues extension from Open VSX
+  - new `shuvscode-gh` bundled extension to fix broken `github:login` empty states and surface the system `gh` CLI
+  - patched `github-authentication` to add a `GhCliFlow` that satisfies `getSession('github', ...)` via the system `gh` CLI when available (no browser needed)
 
 ## Current status
 - Branch: `shuvscode-main`, tracking `origin/shuvscode-main`.
@@ -24,6 +26,77 @@
   - `shuvscode.product.json`
   - `README.md`
   - `HANDOFF.md`
+
+## shuvscode-gh and gh CLI auth integration
+
+### Problem
+The bundled `GitHub.vscode-pull-request-github` 0.144.0 + Microsoft's `github-authentication`
+extension showed a raw VS Code fallback string in empty workspace states:
+
+> "There is no data provider registered that can provide view data."
+
+This is because every `viewsWelcome` entry the upstream extension contributes
+for the `github:login` view requires `ReposManagerStateContext == NeedsAuthentication`.
+In states where that context isn't set (no folder, no git repo, still initializing,
+or already signed in), no welcome content matches and VS Code falls back to the raw
+"no data provider" string.
+
+Additionally, the bundled `github-authentication` extension does NOT consult the
+system `gh` CLI -- only OAuth via browser, device code, or manual PAT. Users with
+a fully-authenticated `gh` install were forced through a browser dance anyway.
+
+### Solution
+
+**`src/stable/extensions/shuvscode-gh/`** is a small built-in extension that:
+- Probes the system `gh` CLI on activation (`gh --version`, then `gh auth status`).
+- Sets `shuvscode.gh.detected` and `shuvscode.gh.authenticated` context keys.
+- Contributes additional `viewsWelcome` entries for `github:login` that cover the
+  empty states the upstream extension forgets, branching on the new context keys.
+- Provides commands: `shuvscode.gh.signIn`, `shuvscode.gh.refreshDetection`,
+  `shuvscode.gh.openTerminal`, `shuvscode.gh.openInBrowser`.
+- `shuvscode.gh.signIn` just calls `vscode.authentication.getSession('github', ...)` --
+  the patched auth provider handles the actual gh CLI handoff.
+- Re-runs detection when the user closes a terminal named `gh auth login`.
+- Holds zero tokens itself.
+
+**`patches/user/32-github-auth-gh-cli.patch`** adds a `GhCliFlow` to the bundled
+`github-authentication` extension. New files:
+- `extensions/github-authentication/src/node/ghCli.ts` -- node-side gh wrapper:
+  `isGhCliAvailable()`, `getGhCliToken()`, `findMissingScopes()`.
+- `extensions/github-authentication/src/browser/ghCli.ts` -- browser stub that
+  always reports unavailable; the existing esbuild plugin in
+  `esbuild.browser.mts` aliases `./node/*` -> `./browser/*` for the web build.
+
+Modified files:
+- `extensions/github-authentication/src/flows.ts`:
+  - New `GhCliFlow` class implementing the existing `IFlow` interface.
+  - `getFlows()` is now async and gates `GhCliFlow` behind a cached
+    `isGhCliAvailable()` check (30s TTL) so the flow is invisible on machines
+    without `gh`. Critical: prevents the "try a different way?" inter-flow
+    prompt from ever surfacing when `gh` is absent.
+- `extensions/github-authentication/src/githubServer.ts`: `await getFlows(...)`.
+- `extensions/github-authentication/src/test/flows.test.ts`: `await getFlows(...)`.
+
+Flow order: `[GhCliFlow, LocalServerFlow, UrlHandlerFlow, DeviceCodeFlow, PatFlow]`.
+When `gh` succeeds: silent first-try success, browser never opens. When `gh` is
+missing: filtered out at `getFlows()` time, behavior identical to upstream. When
+`gh` is installed but lacks the requested scopes: shows a warning with
+"Run gh auth refresh" (opens terminal with command pre-filled) or "Use Browser Instead".
+
+### Scopes used by the GitHub PR extension
+The upstream PR extension requests `['read:user', 'user:email', 'repo', 'workflow']`
+by default. Most `gh auth login` flows give `repo`, `read:org`, `workflow`,
+`gist`, `delete_repo` -- usually enough but `read:user` may need to be added via
+`gh auth refresh -s read:user,user:email`.
+
+### Risks / things to verify in UI smoke test
+- The `github:login` view no longer shows "There is no data provider registered..."
+  in any state (no folder, no repo, signed in, etc.).
+- Clicking the new "Sign in to GitHub" link triggers an instant sign-in when `gh`
+  is authenticated, with NO browser opened.
+- When `gh` is missing, behavior matches upstream (browser OAuth fallback).
+- The token returned by `gh auth token` has enough scopes to call `/user` --
+  this is what `GitHubServer.getUserInfo` does post-login.
 
 ## Built-in extension trust and GitHub PRs
 - `shuvscode.product.json` now defines `trustedExtensionPublishers`:

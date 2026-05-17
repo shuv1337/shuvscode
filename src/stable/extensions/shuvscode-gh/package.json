@@ -1,0 +1,80 @@
+{
+  "name": "shuvscode-gh",
+  "displayName": "shuvscode GitHub",
+  "description": "GitHub onboarding and gh CLI integration for shuvscode.",
+  "version": "0.1.0",
+  "publisher": "shuvscode",
+  "license": "MIT",
+  "engines": {
+    "vscode": "*"
+  },
+  "categories": [
+    "Other"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:github:login",
+    "onView:pr:github",
+    "onView:issues:github",
+    "onCommand:shuvscode.gh.signIn",
+    "onCommand:shuvscode.gh.refreshDetection",
+    "onCommand:shuvscode.gh.openTerminal",
+    "onCommand:shuvscode.gh.openInBrowser"
+  ],
+  "main": "./extension.js",
+  "extensionKind": [
+    "ui"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "shuvscode.gh.signIn",
+        "title": "Sign in to GitHub",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.gh.refreshDetection",
+        "title": "Refresh gh CLI detection",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.gh.openTerminal",
+        "title": "Open Terminal for gh CLI",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.gh.openInBrowser",
+        "title": "Open Repository on GitHub",
+        "category": "shuvscode"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "github:login",
+        "when": "!shuvscode.gh.detected && workspaceFolderCount == 0",
+        "contents": "Sign in to GitHub to view your pull requests, issues, and notifications here.\n[Sign in to GitHub](command:shuvscode.gh.signIn)\nOr install the [GitHub CLI](https://cli.github.com) and run `gh auth login` to sign in from your terminal."
+      },
+      {
+        "view": "github:login",
+        "when": "!shuvscode.gh.detected && workspaceFolderCount > 0",
+        "contents": "Sign in to GitHub to view your pull requests, issues, and notifications here.\n[Sign in to GitHub](command:shuvscode.gh.signIn)\nOr install the [GitHub CLI](https://cli.github.com) and run `gh auth login` to sign in from your terminal."
+      },
+      {
+        "view": "github:login",
+        "when": "shuvscode.gh.detected && !shuvscode.gh.authenticated",
+        "contents": "GitHub CLI is installed but not signed in.\n[Sign in with gh CLI](command:shuvscode.gh.openTerminal)\n[Sign in with browser](command:shuvscode.gh.signIn)"
+      },
+      {
+        "view": "github:login",
+        "when": "shuvscode.gh.detected && shuvscode.gh.authenticated",
+        "contents": "$(github) GitHub CLI is signed in on this machine.\n[Use gh CLI account](command:shuvscode.gh.signIn)\n[Sign in with browser instead](command:pr.signin)"
+      }
+    ]
+  }
+}

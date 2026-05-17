@@ -1,0 +1,398 @@
+diff --git i/extensions/github-authentication/src/browser/ghCli.ts w/extensions/github-authentication/src/browser/ghCli.ts
+new file mode 100644
+index 00000000000..14a970e2fce
+--- /dev/null
++++ w/extensions/github-authentication/src/browser/ghCli.ts
+@@ -0,0 +1,36 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) shuvscode contributors.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++// Browser stub for the gh CLI helper. The CLI is by definition unavailable
++// inside a web worker / browser extension host, so all functions return
++// "not available" results. The matching node implementation lives in
++// `../node/ghCli.ts`.
++
++import { Log } from '../common/logger';
++
++export interface GhCliTokenResult {
++	token: string;
++	user: string;
++	tokenScopes: string[];
++}
++
++export async function isGhCliAvailable(): Promise<boolean> {
++	return false;
++}
++
++export async function getGhCliToken(_logger: Log, _host = 'github.com'): Promise<GhCliTokenResult> {
++	throw new GhCliError('gh CLI is not available in browser extension hosts');
++}
++
++export class GhCliError extends Error {
++	constructor(message: string) {
++		super(message);
++		this.name = 'GhCliError';
++	}
++}
++
++export function findMissingScopes(_requestedScopes: string, _tokenScopes: string[]): string[] {
++	return [];
++}
+diff --git i/extensions/github-authentication/src/flows.ts w/extensions/github-authentication/src/flows.ts
+index febf2b69b60..d421f5b863b 100644
+--- i/extensions/github-authentication/src/flows.ts
++++ w/extensions/github-authentication/src/flows.ts
+@@ -14,6 +14,7 @@ import { LoopbackAuthServer } from './node/authServer';
+ import { promiseFromEvent } from './common/utils';
+ import { isHostedGitHubEnterprise } from './common/env';
+ import { NETWORK_ERROR, TIMED_OUT_ERROR, USER_CANCELLATION_ERROR } from './common/errors';
++import { findMissingScopes, getGhCliToken, GhCliError, isGhCliAvailable } from './node/ghCli';
+ 
+ interface IGitHubDeviceCodeResponse {
+ 	device_code: string;
+@@ -519,6 +520,68 @@ class DeviceCodeFlow implements IFlow {
+ 	}
+ }
+ 
++// shuvscode: GhCliFlow consumes the system `gh` CLI to satisfy a session
++// request without launching a browser. It is gated behind a runtime
++// availability check in getFlows() so it is only listed when `gh` is on
++// the PATH; that way an unrelated user never sees a 'fall through to next
++// flow' prompt when they don't have the CLI installed.
++class GhCliFlow implements IFlow {
++	label = l10n.t('GitHub CLI');
++	options: IFlowOptions = {
++		supportsGitHubDotCom: true,
++		// `gh auth token --hostname <ghes>` works but we keep this disabled
++		// initially -- GHES tokens have different lifecycle/scope semantics
++		// that we want to validate before enabling here.
++		supportsGitHubEnterpriseServer: false,
++		supportsHostedGitHubEnterprise: false,
++		// gh CLI must be on the UI machine, so we cannot run it from a
++		// remote/worker extension host.
++		supportsRemoteExtensionHost: false,
++		supportsWebWorkerExtensionHost: false,
++		supportsNoClientSecret: true,
++		supportsSupportedClients: true,
++		supportsUnsupportedClients: true
++	};
++
++	async trigger({ scopes, logger }: IFlowTriggerOptions): Promise<string> {
++		logger.info(`Trying gh CLI flow... (${scopes})`);
++		let result;
++		try {
++			result = await getGhCliToken(logger);
++		} catch (e) {
++			const message = e instanceof GhCliError
++				? e.message
++				: (e && (e as Error).message) || String(e);
++			logger.info(`gh CLI flow unavailable: ${message}`);
++			throw new Error(message);
++		}
++
++		const missing = findMissingScopes(scopes, result.tokenScopes);
++		if (missing.length) {
++			const refreshLabel = l10n.t('Run gh auth refresh');
++			const browserLabel = l10n.t('Use Browser Instead');
++			const choice = await window.showWarningMessage(
++				l10n.t({
++					message: 'Your gh CLI token is missing scope(s): {0}. Run `gh auth refresh -s {1}` to upgrade it.',
++					args: [missing.join(', '), missing.join(',')],
++					comment: ['{0} is a comma-separated list of OAuth scopes', '{1} is the same list with no spaces']
++				}),
++				refreshLabel,
++				browserLabel
++			);
++			if (choice === refreshLabel) {
++				const term = window.createTerminal({ name: 'gh auth refresh' });
++				term.show(true);
++				term.sendText(`gh auth refresh -s ${missing.join(',')}`, false);
++			}
++			throw new Error(`gh CLI token missing scopes: ${missing.join(', ')}`);
++		}
++
++		logger.info(`gh CLI flow succeeded for ${result.user}`);
++		return result.token;
++	}
++}
++
+ class PatFlow implements IFlow {
+ 	label = l10n.t('personal access token');
+ 	options: IFlowOptions = {
+@@ -604,14 +667,29 @@ class PatFlow implements IFlow {
+ 	}
+ }
+ 
++const ghCliFlow = new GhCliFlow();
+ const allFlows: IFlow[] = [
++	ghCliFlow,
+ 	new LocalServerFlow(),
+ 	new UrlHandlerFlow(),
+ 	new DeviceCodeFlow(),
+ 	new PatFlow()
+ ];
+ 
+-export function getFlows(query: IFlowQuery) {
++// shuvscode: cache the gh CLI availability check for a short window so we
++// don't repeatedly fork `gh --version` inside the same login attempt.
++let ghAvailableCache: { value: boolean; expiresAt: number } | undefined;
++async function isGhAvailableCached(): Promise<boolean> {
++	const now = Date.now();
++	if (ghAvailableCache && ghAvailableCache.expiresAt > now) {
++		return ghAvailableCache.value;
++	}
++	const value = await isGhCliAvailable();
++	ghAvailableCache = { value, expiresAt: now + 30_000 };
++	return value;
++}
++
++export async function getFlows(query: IFlowQuery) {
+ 	const validFlows = allFlows.filter(flow => {
+ 		let useFlow: boolean = true;
+ 		switch (query.target) {
+@@ -649,15 +727,26 @@ export function getFlows(query: IFlowQuery) {
+ 		return useFlow;
+ 	});
+ 
++	// shuvscode: drop GhCliFlow when `gh` is not installed; this prevents
++	// the inter-flow 'try a different way?' prompt from appearing on
++	// machines that don't have the CLI.
++	let filtered = validFlows;
++	if (filtered.includes(ghCliFlow)) {
++		const available = await isGhAvailableCached();
++		if (!available) {
++			filtered = filtered.filter(f => f !== ghCliFlow);
++		}
++	}
++
+ 	const preferDeviceCodeFlow = workspace.getConfiguration('github-authentication').get<boolean>('preferDeviceCodeFlow', false);
+ 	if (preferDeviceCodeFlow) {
+ 		return [
+-			...validFlows.filter(flow => flow instanceof DeviceCodeFlow),
+-			...validFlows.filter(flow => !(flow instanceof DeviceCodeFlow))
++			...filtered.filter(flow => flow instanceof DeviceCodeFlow),
++			...filtered.filter(flow => !(flow instanceof DeviceCodeFlow))
+ 		];
+ 	}
+ 
+-	return validFlows;
++	return filtered;
+ }
+ 
+ /**
+diff --git i/extensions/github-authentication/src/githubServer.ts w/extensions/github-authentication/src/githubServer.ts
+index b8646696a8a..16c370af4fd 100644
+--- i/extensions/github-authentication/src/githubServer.ts
++++ w/extensions/github-authentication/src/githubServer.ts
+@@ -115,7 +115,7 @@ export class GitHubServer implements IGitHubServer {
+ 		const supportedTarget = isSupportedTarget(this._type, this._ghesUri);
+ 
+ 		const isNodeEnvironment = typeof process !== 'undefined' && typeof process?.versions?.node === 'string';
+-		const flows = getFlows({
++		const flows = await getFlows({
+ 			target: this._type === AuthProviderType.github
+ 				? GitHubTarget.DotCom
+ 				: supportedTarget ? GitHubTarget.HostedEnterprise : GitHubTarget.Enterprise,
+diff --git i/extensions/github-authentication/src/node/ghCli.ts w/extensions/github-authentication/src/node/ghCli.ts
+new file mode 100644
+index 00000000000..1dde5cb1a23
+--- /dev/null
++++ w/extensions/github-authentication/src/node/ghCli.ts
+@@ -0,0 +1,153 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) shuvscode contributors.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++// shuvscode: lightweight wrapper around the system `gh` CLI so the GitHub
++// authentication provider can satisfy `vscode.authentication.getSession`
++// requests without launching a browser.
++//
++// This file is the node-side implementation. The browser implementation
++// in `../browser/ghCli.ts` is a stub that always reports unavailable; the
++// esbuild plugin in `esbuild.browser.mts` rewrites `./node/ghCli` imports
++// to `./browser/ghCli` for the web build.
++
++import { execFile } from 'child_process';
++import { Log } from '../common/logger';
++
++export interface GhCliTokenResult {
++	token: string;
++	user: string;
++	tokenScopes: string[];
++}
++
++const DEFAULT_TIMEOUT_MS = 5_000;
++
++function run(cmd: string, args: string[], timeoutMs = DEFAULT_TIMEOUT_MS): Promise<{ code: number; stdout: string; stderr: string }> {
++	return new Promise(resolve => {
++		let settled = false;
++		const child = execFile(cmd, args, { timeout: timeoutMs, encoding: 'utf8' }, (err, stdout, stderr) => {
++			if (settled) {
++				return;
++			}
++			settled = true;
++			if (err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
++				resolve({ code: -1, stdout: '', stderr: 'gh: not found' });
++				return;
++			}
++			const rawCode = (err as { code?: unknown } | null)?.code;
++			const code: number = typeof rawCode === 'number' ? rawCode : (rawCode ? 1 : 0);
++			resolve({
++				code,
++				stdout: String(stdout ?? ''),
++				stderr: String(stderr ?? '')
++			});
++		});
++		child.on('error', e => {
++			if (settled) {
++				return;
++			}
++			settled = true;
++			resolve({ code: -1, stdout: '', stderr: e.message });
++		});
++	});
++}
++
++/**
++ * Returns `true` when `gh --version` succeeds, indicating the GitHub CLI
++ * is installed and runnable. This is a fast no-op when `gh` is missing.
++ */
++export async function isGhCliAvailable(): Promise<boolean> {
++	const result = await run('gh', ['--version'], 2_000);
++	return result.code === 0;
++}
++
++/**
++ * Returns the OAuth token, user login, and scopes for the active `gh`
++ * authentication on github.com. Throws if `gh` is missing, not signed in,
++ * or otherwise fails.
++ */
++export async function getGhCliToken(logger: Log, host = 'github.com'): Promise<GhCliTokenResult> {
++	logger.info('Attempting to retrieve token from gh CLI...');
++
++	const tokenResult = await run('gh', ['auth', 'token', '--hostname', host]);
++	if (tokenResult.code !== 0) {
++		const message = (tokenResult.stderr || tokenResult.stdout).trim() || 'gh auth token failed';
++		throw new GhCliError(message);
++	}
++	const token = tokenResult.stdout.trim();
++	if (!token) {
++		throw new GhCliError('gh auth token returned an empty value');
++	}
++
++	// `gh auth status` prints token scopes on stderr.
++	const statusResult = await run('gh', ['auth', 'status', '--hostname', host, '--show-token']);
++	const statusText = `${statusResult.stderr}\n${statusResult.stdout}`;
++
++	let user = '';
++	const userMatch = statusText.match(/Logged in to [^ ]+ (?:as|account) ([^\s(]+)/i);
++	if (userMatch) {
++		user = userMatch[1];
++	}
++
++	let tokenScopes: string[] = [];
++	const scopeMatch = statusText.match(/Token scopes:\s*([^\n]+)/i);
++	if (scopeMatch) {
++		tokenScopes = scopeMatch[1]
++			.split(',')
++			.map(s => s.trim().replace(/^['"`]|['"`]$/g, ''))
++			.filter(Boolean);
++	}
++
++	if (!user) {
++		// Fallback to API call to discover the login.
++		const apiResult = await run('gh', ['api', 'user', '--jq', '.login']);
++		if (apiResult.code === 0) {
++			user = apiResult.stdout.trim();
++		}
++	}
++
++	if (!user) {
++		user = '<unknown>';
++	}
++
++	logger.info(`Got token from gh CLI for ${user} with scopes: ${tokenScopes.join(', ') || '<none reported>'}`);
++	return { token, user, tokenScopes };
++}
++
++export class GhCliError extends Error {
++	constructor(message: string) {
++		super(message);
++		this.name = 'GhCliError';
++	}
++}
++
++/**
++ * Checks whether `tokenScopes` (as reported by `gh auth status`) satisfies
++ * the GitHub OAuth scope string requested by the extension. Returns the
++ * missing scopes, or `[]` when fully satisfied.
++ *
++ * Mirrors the loose semantics used by `PatFlow.getScopes` -- a parent
++ * scope (e.g. `user`) satisfies a child request (e.g. `user:email`).
++ */
++export function findMissingScopes(requestedScopes: string, tokenScopes: string[]): string[] {
++	const requested = requestedScopes.split(/\s+/).filter(Boolean);
++	const present = new Set(tokenScopes);
++	const missing: string[] = [];
++	for (const scope of requested) {
++		if (present.has(scope)) {
++			continue;
++		}
++		// Allow parent scope to satisfy child (e.g. `user` covers `user:email`).
++		const parent = scope.split(':')[0];
++		if (parent && present.has(parent)) {
++			continue;
++		}
++		// Allow `repo` to satisfy any `repo:*` child.
++		if (parent !== scope && [...present].some(p => p.startsWith(parent + ':'))) {
++			continue;
++		}
++		missing.push(scope);
++	}
++	return missing;
++}
+diff --git i/extensions/github-authentication/src/test/flows.test.ts w/extensions/github-authentication/src/test/flows.test.ts
+index fdcdd0f3f45..c63a4a12588 100644
+--- i/extensions/github-authentication/src/test/flows.test.ts
++++ w/extensions/github-authentication/src/test/flows.test.ts
+@@ -178,8 +178,8 @@ suite('getFlows', () => {
+ 	];
+ 
+ 	for (const testCase of testCases) {
+-		test(`gives the correct flows - ${testCase.label}`, () => {
+-			const flows = getFlows(testCase.query);
++		test(`gives the correct flows - ${testCase.label}`, async () => {
++			const flows = await getFlows(testCase.query);
+ 
+ 			assert.strictEqual(
+ 				flows.length,
+@@ -212,7 +212,7 @@ suite('getFlows', () => {
+ 			const config = vscode.workspace.getConfiguration('github-authentication');
+ 			await config.update('preferDeviceCodeFlow', true, vscode.ConfigurationTarget.Global);
+ 
+-			const flows = getFlows({
++			const flows = await getFlows({
+ 				extensionHost: ExtensionHost.Local,
+ 				isSupportedClient: true,
+ 				target: GitHubTarget.DotCom
+@@ -230,7 +230,7 @@ suite('getFlows', () => {
+ 			const config = vscode.workspace.getConfiguration('github-authentication');
+ 			await config.update('preferDeviceCodeFlow', true, vscode.ConfigurationTarget.Global);
+ 
+-			const flows = getFlows({
++			const flows = await getFlows({
+ 				extensionHost: ExtensionHost.Remote,
+ 				isSupportedClient: true,
+ 				target: GitHubTarget.DotCom
+@@ -246,7 +246,7 @@ suite('getFlows', () => {
+ 			const config = vscode.workspace.getConfiguration('github-authentication');
+ 			await config.update('preferDeviceCodeFlow', true, vscode.ConfigurationTarget.Global);
+ 
+-			const flows = getFlows({
++			const flows = await getFlows({
+ 				extensionHost: ExtensionHost.WebWorker,
+ 				isSupportedClient: true,
+ 				target: GitHubTarget.DotCom
