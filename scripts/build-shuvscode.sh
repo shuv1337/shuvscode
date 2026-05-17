@@ -72,3 +72,11 @@ if [[ "${VSCODE_PLATFORM}" == "darwin" ]]; then
 else
   echo "Built: ${BRANDED_OUTPUT}/bin/${BINARY_NAME}"
 fi
+
+# Refresh the user-local CLI symlink and Walker/GNOME .desktop entry so both
+# `shuvscode` from the shell and the Walker application launcher point at this
+# fresh build instead of any system-installed copy. Linux only; failures here
+# are non-fatal -- the build itself already succeeded.
+if [[ "${VSCODE_PLATFORM}" == "linux" && -x "${REPO_ROOT}/scripts/install-dev-launchers.sh" ]]; then
+  "${REPO_ROOT}/scripts/install-dev-launchers.sh" || echo "warning: install-dev-launchers.sh failed (build is otherwise OK)" >&2
+fi
