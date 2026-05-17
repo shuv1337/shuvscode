@@ -3,11 +3,21 @@
 ## Objective
 - Continue shuvscode Canvas/Projects polish and native-feeling bundled extension work.
 - Latest completed batch:
-  - dense split layout support for bottom/side workbench regions
+  - reverted dense panel split patches (30 and 31) -- experience was not good enough; secondary side bar now behaves like upstream
   - trusted built-in extension publishers
   - bundled GitHub Pull Requests and Issues extension from Open VSX
   - new `shuvscode-gh` bundled extension to fix broken `github:login` empty states and surface the system `gh` CLI
   - patched `github-authentication` to add a `GhCliFlow` that satisfies `getSession('github', ...)` via the system `gh` CLI when available (no browser needed)
+
+## Reverted: dense panel split layouts (May 2026)
+Patches `30-bottom-pane-secondary-sidebar-split.patch` and
+`31-sidebar-secondary-sidebar-split.patch`, plus their
+`workbench.bottomPane.experimental.splitWithSecondarySideBar` /
+`workbench.sideBar.experimental.splitWithSecondarySideBar` settings,
+were removed. The layout primitives didn't compose cleanly with the
+rest of the Canvas chrome and the resulting UX was worse than the
+upstream behavior. The Canvas SCM-in-secondary-sidebar default
+(patch 26) was kept -- that is independent of the removed split logic.
 
 ## Current status
 - Branch: `shuvscode-main`, tracking `origin/shuvscode-main`.
@@ -18,8 +28,6 @@
   - arch `x64`
 - New uncommitted files:
   - `assets/extensions/GitHub.vscode-pull-request-github-0.144.0.vsix`
-  - `patches/user/30-bottom-pane-secondary-sidebar-split.patch`
-  - `patches/user/31-sidebar-secondary-sidebar-split.patch`
 - Modified metadata/docs:
   - `.gitignore`
   - `AGENTS.md`
@@ -113,32 +121,15 @@ by default. Most `gh auth login` flows give `repo`, `read:org`, `workflow`,
 - Important implementation detail: the `vsix` path in `shuvscode.product.json` is `../assets/extensions/...` because VS Code's `build/lib/builtInExtensions.ts` resolves it relative to the vendored `vscode/` tree root during build.
 - `extensionEnabledApiProposals["GitHub.vscode-pull-request-github"]` mirrors the extension manifest proposals so it can start without launching shuvscode with `--enable-proposed-api GitHub.vscode-pull-request-github`.
 
-## Dense split layout settings
-
-### Bottom pane + secondary side bar split
-- Setting: `workbench.bottomPane.experimental.splitWithSecondarySideBar` (default `false`).
-- Patch: `patches/user/30-bottom-pane-secondary-sidebar-split.patch`.
-- When enabled and the panel is at the bottom/top, the secondary side bar shares the panel row instead of sitting beside the editor.
-- Intended use: keep Terminal in the panel and Source Control (or another view container) in the secondary side bar for a persistent horizontal split.
-
-### Primary side bar + secondary side bar vertical split
-- Setting: `workbench.sideBar.experimental.splitWithSecondarySideBar` (default `false`).
-- Patch: `patches/user/31-sidebar-secondary-sidebar-split.patch`.
-- When enabled, the secondary side bar is stacked vertically with the primary side bar in one side column.
-- Intended use: keep Explorer and Projects visible at the same time.
-- If both split settings are enabled, the side-bar split wins because the secondary side bar can only occupy one target.
-
 ## Important files
 - `shuvscode.product.json` — built-in extensions, extension trust publishers, proposed API allowlist.
 - `assets/extensions/GitHub.vscode-pull-request-github-0.144.0.vsix` — pinned local VSIX for GitHub PRs.
-- `patches/user/30-bottom-pane-secondary-sidebar-split.patch` — bottom/top panel row can include the secondary side bar.
-- `patches/user/31-sidebar-secondary-sidebar-split.patch` — primary + secondary side bars can stack vertically.
 - `patches/user/28-persistent-project-terminals.patch` — pty grace time + detach on RELOAD/LOAD.
 - `patches/user/29-multiplexer-friendly-reattach.patch` — alt-buffer aware replay + SIGWINCH bump.
 - `src/stable/extensions/shuvscode-projects/extension.js` — Projects provider, Open Windows registry, multiplexer helpers, commands.
 - `src/stable/extensions/shuvscode-projects/package.json` — Projects commands/settings/contributions.
 - `src/stable/src/vs/code/electron-browser/workbench/shuvscode.css` — Canvas chrome styling.
-- `README.md` — documents multiplexer, dense split layouts, and bundled native-feeling extensions.
+- `README.md` — documents multiplexer and bundled native-feeling extensions.
 
 ## Validation completed
 - `jq . shuvscode.product.json` passed.
@@ -157,14 +148,11 @@ by default. Most `gh auth login` flows give `repo`, `read:org`, `workflow`,
 ## Manual UI smoke still needed
 1. Launch the rebuilt app normally or with an isolated profile.
 2. Verify GitHub Pull Requests appears as a built-in/native-feeling extension and does not show trust/proposed-API warnings.
-3. Sign in to GitHub and verify PR/issue views activate normally.
-4. Put Projects in the secondary side bar if it is not already there.
-5. With `workbench.sideBar.experimental.splitWithSecondarySideBar: true`, verify Explorer and Projects stack vertically in the same side column.
-6. Disable that setting and enable `workbench.bottomPane.experimental.splitWithSecondarySideBar`; verify Terminal + secondary side bar can share the bottom panel row.
-7. Resize the splits and reload the window; check for layout persistence/regression.
+3. Sign in to GitHub via the new `shuvscode-gh` welcome view and verify it uses the system `gh` CLI (no browser opens).
+4. Verify PR/Issues views populate after sign-in.
+5. Confirm the secondary side bar now behaves like upstream VS Code -- no leftover split toggles or unexpected layout side effects.
 
 ## Risks / open questions
-- The current side-bar split reuses the existing primary and secondary side bar parts. It does not create four independent side-bar slots; the secondary side bar can only be stacked with the primary side bar or split with the panel, not both simultaneously.
-- Initial vertical split sizes default to 50/50 when both side bars are visible. More granular per-split sizing persistence could be added later if needed.
 - GitHub Pull Requests uses many proposed APIs; the product allowlist matches version `0.144.0`. Re-check the extension manifest before bumping the VSIX.
 - CLI `--list-extensions` did not list the bundled extension in an isolated profile; direct product/package inspection confirmed it is present in `resources/app/extensions`. Use GUI extension view for final native-feel validation.
+- The `gh` CLI flow assumes the user's `gh auth` token has the scopes the PR extension requests (`read:user`, `user:email`, `repo`, `workflow`). If scopes are missing, shuvscode shows a warning with a `gh auth refresh -s ...` action.

@@ -107,18 +107,6 @@ tmux, neovim, btop, lazygit, …). For those the renderer skips the stale cell
 snapshot and the pty host delivers a real SIGWINCH so the inner process
 redraws from authoritative state instead of being overpainted.
 
-### Dense split layouts
-
-`workbench.bottomPane.experimental.splitWithSecondarySideBar` (default `false`)
-lets the secondary side bar share the bottom/top panel row. Enable it, keep
-Terminal in the panel, and move Source Control to the secondary side bar to get
-a persistent Terminal + Source Control split.
-
-`workbench.sideBar.experimental.splitWithSecondarySideBar` (default `false`)
-stacks the secondary side bar with the primary side bar in one vertical column,
-so two side-bar containers can stay visible at once (for example Explorer above
-Projects). If both split settings are enabled, the side-bar split wins.
-
 ## Built-in extensions
 
 `shuvscode.product.json` bakes in a small set of native-feeling extensions:
