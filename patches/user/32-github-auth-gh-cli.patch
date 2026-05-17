@@ -197,10 +197,10 @@ index b8646696a8a..16c370af4fd 100644
  				: supportedTarget ? GitHubTarget.HostedEnterprise : GitHubTarget.Enterprise,
 diff --git i/extensions/github-authentication/src/node/ghCli.ts w/extensions/github-authentication/src/node/ghCli.ts
 new file mode 100644
-index 00000000000..1dde5cb1a23
+index 00000000000..04cfeb0a4cb
 --- /dev/null
 +++ w/extensions/github-authentication/src/node/ghCli.ts
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,176 @@
 +/*---------------------------------------------------------------------------------------------
 + *  Copyright (c) shuvscode contributors.
 + *  Licensed under the MIT License. See License.txt in the project root for license information.
@@ -330,8 +330,16 @@ index 00000000000..1dde5cb1a23
 + * the GitHub OAuth scope string requested by the extension. Returns the
 + * missing scopes, or `[]` when fully satisfied.
 + *
-+ * Mirrors the loose semantics used by `PatFlow.getScopes` -- a parent
-+ * scope (e.g. `user`) satisfies a child request (e.g. `user:email`).
++ * Semantics (matching GitHub OAuth scope inclusion rules):
++ *  - Exact match always satisfies (`repo` covers `repo`).
++ *  - Parent namespace covers child (`user` covers `read:user` and `user:email`;
++ *    `admin:org` covers `write:org` and `read:org`; `repo` covers `repo:status`,
++ *    `repo:invite`, `public_repo`, etc).
++ *
++ * What this intentionally does NOT do:
++ *  - Sibling scopes do not satisfy each other. `read:org` does NOT satisfy
++ *    `read:user` even though they share the `read:` prefix -- they live in
++ *    completely different scope hierarchies (`org` vs `user`).
 + */
 +export function findMissingScopes(requestedScopes: string, tokenScopes: string[]): string[] {
 +	const requested = requestedScopes.split(/\s+/).filter(Boolean);
@@ -341,14 +349,29 @@ index 00000000000..1dde5cb1a23
 +		if (present.has(scope)) {
 +			continue;
 +		}
-+		// Allow parent scope to satisfy child (e.g. `user` covers `user:email`).
-+		const parent = scope.split(':')[0];
-+		if (parent && present.has(parent)) {
-+			continue;
++		// Parent namespace covers child: `user` -> `read:user`, `user:email`.
++		if (scope.includes(':')) {
++			const parent = scope.split(':')[0];
++			if (parent && present.has(parent)) {
++				continue;
++			}
++			// `admin:<x>` covers `write:<x>` covers `read:<x>`.
++			const [tier, namespace] = scope.split(':');
++			if (namespace) {
++				if (tier === 'read' && (present.has(`write:${namespace}`) || present.has(`admin:${namespace}`))) {
++					continue;
++				}
++				if (tier === 'write' && present.has(`admin:${namespace}`)) {
++					continue;
++				}
++			}
 +		}
-+		// Allow `repo` to satisfy any `repo:*` child.
-+		if (parent !== scope && [...present].some(p => p.startsWith(parent + ':'))) {
-+			continue;
++		// `repo` (full) covers `public_repo`, `repo:status`, `repo:invite`,
++		// `repo_deployment`, `security_events`.
++		if (present.has('repo')) {
++			if (scope === 'public_repo' || scope === 'repo_deployment' || scope === 'security_events' || scope.startsWith('repo:')) {
++				continue;
++			}
 +		}
 +		missing.push(scope);
 +	}

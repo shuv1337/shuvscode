@@ -23,9 +23,11 @@ This repository packages a branded Linux x64 build of VS Code/VSCodium as `shuvs
 - Do not use `shuvcode` for this project; that name belongs to a separate opencode fork. Use the explicit built-app path or `/usr/bin/shuvscode` when testing the installed AUR package.
 - Branding should remain lowercase `shuvscode`.
 - `git-lfs` is required for working with the VS Code source tree.
+- For browser-driven Electron smoke tests, launch `shuvscode` with `--remote-debugging-port=<port>` and an isolated profile. The VS Code CLI warns that `remote-debugging-port` is unknown, but still passes it through to Electron/Chromium and exposes CDP.
 
 ## Validation hints
 
 - A basic launch smoke test is: `./shuvscode-linux-x64/bin/shuvscode --version`.
 - GUI smoke checks from `HANDOFF.md`: welcome suppression, extension activation, Open VSX install, first-run defaults.
 - For local VSIX-backed entries in `shuvscode.product.json`, the `vsix` path is resolved by VS Code's build from the vendored `vscode/` tree root, not this repository root. Use `../assets/extensions/...` for files stored in this repo's top-level `assets/extensions/` directory.
+- To drive the Electron app with Vercel Labs `agent-browser`, start a disposable session such as `./shuvscode-linux-x64/bin/shuvscode --no-sandbox --disable-gpu --new-window --remote-debugging-port=9333 --user-data-dir /tmp/shuvscode-smoke-user-data --extensions-dir /tmp/shuvscode-smoke-extensions <workspace>`, then attach with `agent-browser --cdp 9333 get title`, `agent-browser --cdp 9333 snapshot`, `agent-browser --cdp 9333 click @ref`, or `agent-browser --cdp 9333 screenshot <path>`.

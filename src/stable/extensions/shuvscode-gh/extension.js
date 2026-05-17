@@ -7,6 +7,18 @@
 // to the `github-authentication` extension is what actually consumes the
 // `gh auth token` value on the auth-provider side; this extension just
 // improves discoverability + the welcome UX.
+//
+// Why we register a TreeDataProvider for `github:login`:
+//   VS Code only renders `viewsWelcome` content for a view when SOME
+//   extension has registered a TreeDataProvider for that view and the
+//   provider returns an empty array. With no TDP registered at all, VS
+//   Code shows the raw fallback string "There is no data provider
+//   registered that can provide view data." -- which is the exact bug
+//   we're working around. The upstream PR extension only conditionally
+//   registers its TDP for `github:login`, so we register a no-op TDP as
+//   an unconditional placeholder. If upstream registers its own TDP
+//   later, VS Code overwrites ours, and our welcome contributions stop
+//   matching (they're gated on context keys that upstream's flows set).
 
 const { execFile } = require('child_process');
 const vscode = require('vscode');
@@ -122,8 +134,31 @@ async function openInBrowser() {
   }
 }
 
+/**
+ * Register an empty no-op TreeDataProvider for the `github:login` view so
+ * that VS Code renders our `viewsWelcome` contributions instead of falling
+ * back to the raw "no data provider" string. See the file-header comment.
+ */
+function registerEmptyProvider(ctx, viewId) {
+  try {
+    const disposable = vscode.window.registerTreeDataProvider(viewId, {
+      getChildren: () => [],
+      getTreeItem: item => item,
+      getParent: () => null,
+    });
+    ctx.subscriptions.push(disposable);
+    log(`registered placeholder TreeDataProvider for ${viewId}`);
+  } catch (e) {
+    log(`failed to register placeholder TreeDataProvider for ${viewId}: ${e && e.message || e}`);
+  }
+}
+
 function activate(ctx) {
   log('activating shuvscode-gh');
+
+  // Ensure VS Code renders welcome content for the GitHub login view even
+  // when the upstream PR extension hasn't registered its own TDP yet.
+  registerEmptyProvider(ctx, 'github:login');
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand('shuvscode.gh.signIn', signIn),
