@@ -94,8 +94,43 @@ function getScmReadyState() {
   return scmReadyState;
 }
 
-async function openExplorerAndSourceControl(ctx, snapshot) {
+async function runLayoutCommand(command, snapshot, { fallback } = {}) {
   try {
+    await vscode.commands.executeCommand(command);
+    log(`editor grid: ran ${command}`, snapshot.debugLogging);
+    return { command, ok: true };
+  } catch (e) {
+    const message = e && e.message || String(e);
+    log(`editor grid: ${command} failed: ${message}`, snapshot.debugLogging);
+    if (fallback) {
+      return runLayoutCommand(fallback, snapshot);
+    }
+    return { command, ok: false, error: message };
+  }
+}
+
+async function applyEditorGrid(snapshot) {
+  const results = [];
+  results.push(await runLayoutCommand('workbench.action.editorLayoutTwoRowsRight', snapshot));
+  results.push(await runLayoutCommand('workbench.action.focusLastEditorGroup', snapshot));
+  results.push(await runLayoutCommand('workbench.action.createTerminalEditorSameGroup', snapshot, {
+    fallback: 'workbench.action.createTerminalEditor'
+  }));
+  results.push(await runLayoutCommand('workbench.action.lockEditorGroup', snapshot));
+  results.push(await runLayoutCommand('workbench.action.focusFirstEditorGroup', snapshot));
+
+  const failures = results.filter(result => !result.ok);
+  if (failures.length > 0) {
+    log(`editor grid: completed with ${failures.length} command failure(s)`, snapshot.debugLogging);
+  } else {
+    log('editor grid: applied terminal-in-editor cockpit layout', snapshot.debugLogging);
+  }
+  return { ok: failures.length === 0, results };
+}
+
+async function applyOpinionatedLayout(ctx, snapshot) {
+  try {
+    const editorGrid = await applyEditorGrid(snapshot);
     await vscode.commands.executeCommand('workbench.view.explorer');
     await vscode.commands.executeCommand('workbench.view.scm');
     await vscode.commands.executeCommand('workbench.view.explorer');
@@ -103,7 +138,7 @@ async function openExplorerAndSourceControl(ctx, snapshot) {
     await ctx.globalState.update(STATE_KEYS.canvasScmOpened, true);
     const state = await setScmReady({ ready: true, reason: 'source control opened by layout orchestrator' });
     log(`scm readiness: ready reason=${state.reason}`, snapshot.debugLogging);
-    return state;
+    return { scm: state, editorGrid };
   } catch (e) {
     const reason = `source control open failed: ${e && e.message || e}`;
     const state = await setScmReady({ ready: false, reason, final: true });
@@ -133,7 +168,10 @@ async function resetLayout(ctx) {
   await ctx.globalState.update(STATE_KEYS.unlocked, false);
   await ctx.globalState.update(STATE_KEYS.appliedVersion, 0);
   const result = await evaluateLayout(ctx, { force: true });
-  vscode.window.showInformationMessage('shuvscode: opinionated layout reset requested. The layout will be applied by the next layout orchestration pass.');
+  if (result.decision.shouldApply) {
+    await applyOpinionatedLayout(ctx, result.snapshot);
+  }
+  vscode.window.showInformationMessage('shuvscode: opinionated layout reset applied.');
   return result;
 }
 
@@ -192,7 +230,7 @@ async function activate(ctx) {
   }
 
   if (layoutResult.decision.shouldApply || !ctx.globalState.get(STATE_KEYS.canvasScmOpened)) {
-    await openExplorerAndSourceControl(ctx, layoutResult.snapshot);
+    await applyOpinionatedLayout(ctx, layoutResult.snapshot);
   }
 
   if (ctx.globalState.get(STATE_KEYS.bootstrapped)) {

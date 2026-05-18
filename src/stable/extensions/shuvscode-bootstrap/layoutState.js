@@ -1,4 +1,4 @@
-const CURRENT_LAYOUT_VERSION = 1;
+const CURRENT_LAYOUT_VERSION = 2;
 
 const STATE_KEYS = {
   appliedVersion: 'shuvscode.layout.appliedVersion',

@@ -60,7 +60,7 @@
         },
         "shuvscode.layout.targetVersion": {
           "type": "number",
-          "default": 1,
+          "default": 2,
           "minimum": 1,
           "description": "Target numeric version for the opinionated layout orchestrator."
         },

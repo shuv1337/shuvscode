@@ -36,6 +36,7 @@
       "workbench.settings.enableNaturalLanguageSearch": false,
       "chat.disableAIFeatures": true,
       "git.autofetch": false,
+      "terminal.integrated.defaultLocation": "editor",
       "window.commandCenter": true,
       "workbench.layoutControl.enabled": false,
       "workbench.secondarySideBar.defaultVisibility": "visible",
