@@ -11,13 +11,39 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCommand:shuvscode.layout.reset",
+    "onCommand:shuvscode.layout.unlock",
+    "onCommand:shuvscode.layout.lock",
+    "onCommand:shuvscode.layout.status"
   ],
   "main": "./extension.js",
   "extensionKind": [
     "ui"
   ],
   "contributes": {
+    "commands": [
+      {
+        "command": "shuvscode.layout.reset",
+        "title": "Reset Opinionated Layout",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.layout.unlock",
+        "title": "Unlock Opinionated Layout",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.layout.lock",
+        "title": "Lock Opinionated Layout",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.layout.status",
+        "title": "Layout Status",
+        "category": "shuvscode"
+      }
+    ],
     "configuration": {
       "title": "shuvscode Bootstrap",
       "properties": {
@@ -25,6 +51,27 @@
           "type": "boolean",
           "default": true,
           "description": "Install shuvscode first-run extension recommendations once."
+        },
+        "shuvscode.layout.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable shuvscode's opinionated layout orchestrator for fresh profiles and explicit reset requests."
+        },
+        "shuvscode.layout.targetVersion": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "description": "Target numeric version for the opinionated layout orchestrator."
+        },
+        "shuvscode.layout.reassertOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reassert the opinionated layout on startup for profiles managed by the layout orchestrator."
+        },
+        "shuvscode.layout.debugLogging": {
+          "type": "boolean",
+          "default": true,
+          "description": "Write opinionated layout lifecycle decisions to the shuvscode Layout output channel."
         }
       }
     }
