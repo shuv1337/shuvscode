@@ -432,7 +432,13 @@ class GitHubLoginProvider {
     }
     return [
       new LoginItem('Use gh CLI account', this.state.user ? `Signed in as ${this.state.user}` : 'Signed in with gh CLI', 'shuvscode.gh.signIn', 'github'),
+      new LoginItem('Open gh-dash', 'Terminal dashboard for PRs, issues, and notifications', 'shuvscode.gh.dash.open', 'terminal'),
+      new LoginItem('Open gh-dash Pull Requests', 'Review PR queues in the terminal dashboard', 'shuvscode.gh.dash.openPullRequests', 'git-pull-request'),
+      new LoginItem('Open gh-dash Issues', 'Triage issue queues in the terminal dashboard', 'shuvscode.gh.dash.openIssues', 'issues'),
+      new LoginItem('Open gh-dash Notifications', 'Check GitHub notifications in the terminal dashboard', 'shuvscode.gh.dash.openNotifications', 'bell'),
+      new LoginItem('Install gh-dash', 'Show the gh extension install command', 'shuvscode.gh.dash.install', 'cloud-download'),
       new LoginItem('Refresh gh CLI detection', 'Check current gh auth state', 'shuvscode.gh.refreshDetection', 'refresh'),
+      new LoginItem('Refresh gh-dash detection', 'Check gh-dash launch availability', 'shuvscode.gh.dash.refreshDetection', 'refresh'),
       new LoginItem('Open GitHub profile', 'Open in browser', 'shuvscode.gh.openInBrowser', 'link-external')
     ];
   }

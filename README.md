@@ -140,6 +140,35 @@ in `trustedExtensionPublishers` so install/trust prompts do not make these
 bundled extensions feel third-party, and GitHub Pull Requests is explicitly
 granted its proposed APIs so it starts without `--enable-proposed-api`.
 
+## GitHub Workflow
+
+shuvscode keeps the bundled GitHub Pull Requests extension available for GUI
+review affordances such as inline comments, checked-out PR branches, issue links,
+and notification views. The `shuvscode-gh` helper colocates Pull Requests,
+Issues, and Notifications with Source Control on first activation so repository
+state and GitHub state sit in the same workbench area.
+
+For dashboard triage, shuvscode recommends `gh-dash` in the integrated terminal.
+After `gh` is installed and authenticated, the GitHub onboarding/status surface
+shows launch rows for the default dashboard, pull requests, issues, and
+notifications. These commands reuse the configured `gh-dash` terminal by default
+and only restart it when the user chooses that action.
+
+Relevant settings:
+
+- `shuvscode.gh.dash.enabled` - detect gh-dash launch support.
+- `shuvscode.gh.dash.executablePath` - optional explicit `gh-dash` path. When
+  empty, shuvscode tries `gh dash` first and then `gh-dash`.
+- `shuvscode.gh.dash.terminalName` - terminal name to reuse for gh-dash launches.
+- `shuvscode.gh.dash.autoPromptInstall` - controls whether shuvscode offers the
+  install prompt when `gh` is available but gh-dash is missing.
+
+The install prompt shows the exact command
+`gh extension install dlvhdr/gh-dash` and opens a terminal with that command
+pre-filled; it does not execute the install silently. shuvscode does not write or
+own `.gh-dash.yml`, global gh-dash config, or repo path configuration. Keep
+`repoPaths` and other gh-dash preferences in user-managed gh-dash config.
+
 ## Validation
 
 Useful checks after touching docs or build metadata:
