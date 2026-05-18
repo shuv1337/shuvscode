@@ -1,0 +1,47 @@
+diff --git i/src/vs/workbench/contrib/authentication/browser/shuvscode-auth-commands.contribution.ts w/src/vs/workbench/contrib/authentication/browser/shuvscode-auth-commands.contribution.ts
+new file mode 100644
+index 00000000000..9728d86bafd
+--- /dev/null
++++ w/src/vs/workbench/contrib/authentication/browser/shuvscode-auth-commands.contribution.ts
+@@ -0,0 +1,26 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) shuvscode contributors.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++// shuvscode: patch 15 (`strip-accounts-sync-telemetry`) drops the upstream
++// `authentication.contribution.ts` import to remove the account-management UI
++// (Manage Trusted Extensions, Manage Account Preferences, etc.). That import
++// was, however, the only thing registering `workbench.getCodeExchangeProxyEndpoints`,
++// which the bundled `github-authentication` extension calls inside
++// `GitHubServer.getRedirectEndpoint()` while computing the `redirectUri`
++// argument it passes to *every* IFlow.trigger() — including our `GhCliFlow`.
++//
++// Without that command, the await in `GitHubServer.login()` throws with
++// "command 'workbench.getCodeExchangeProxyEndpoints' not found" on every
++// iteration of the flow loop, so no flow ever runs and the user is shown
++// upstream's standard "try a different way? (device code)" fallback prompt.
++//
++// We restore just the command (returning `undefined`, the same value
++// non-codespaces users would have gotten from the upstream implementation
++// when `options.codeExchangeProxyEndpoints` is unset) without bringing back
++// the account-management UI surface that patch 15 deliberately removed.
++
++import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
++
++CommandsRegistry.registerCommand('workbench.getCodeExchangeProxyEndpoints', () => undefined);
+diff --git i/src/vs/workbench/workbench.common.main.ts w/src/vs/workbench/workbench.common.main.ts
+--- i/src/vs/workbench/workbench.common.main.ts
++++ w/src/vs/workbench/workbench.common.main.ts
+@@ -370,7 +370,10 @@
+ // Language Status
+ import './contrib/languageStatus/browser/languageStatus.contribution.js';
+ 
+-// Authentication (stripped by shuvscode)
++// Authentication: account-management UI stripped by shuvscode (see patch 15),
++// but we still need workbench.getCodeExchangeProxyEndpoints registered for
++// the built-in github-authentication extension's redirect computation.
++import './contrib/authentication/browser/shuvscode-auth-commands.contribution.js';
+ // User Data Sync (stripped by shuvscode)
+ 
+ // User Data Profiles
