@@ -23,6 +23,7 @@ const CTX_DETECTED = 'shuvscode.gh.detected';
 const CTX_AUTHENTICATED = 'shuvscode.gh.authenticated';
 const CTX_DASH_DETECTED = 'shuvscode.gh.dash.detected';
 const CTX_DASH_ENABLED = 'shuvscode.gh.dash.enabled';
+const GH_DASH_INSTALL_COMMAND = 'gh extension install dlvhdr/gh-dash';
 
 // Scope set requested by the GitHub Pull Requests extension by default.
 // Matches vscode-pull-request-github's call to getSession().
@@ -34,7 +35,8 @@ let ghDashState = {
   enabled: true,
   detected: false,
   descriptor: null,
-  reason: 'not-started'
+  reason: 'not-started',
+  ghPath: null
 };
 
 function log(line) {
@@ -125,7 +127,7 @@ async function detectGhDash(settings = getDashSettings()) {
   await vscode.commands.executeCommand('setContext', CTX_DASH_ENABLED, enabled);
 
   if (!enabled) {
-    ghDashState = { enabled, detected: false, descriptor: null, reason: 'disabled by setting' };
+    ghDashState = { enabled, detected: false, descriptor: null, reason: 'disabled by setting', ghPath: null };
     await vscode.commands.executeCommand('setContext', CTX_DASH_DETECTED, false);
     log('gh-dash detected=false reason=disabled by setting');
     return ghDashState;
@@ -145,7 +147,7 @@ async function detectGhDash(settings = getDashSettings()) {
       log(`gh-dash detected=true kind=configured-gh-dash command=${configured}`);
       return ghDashState;
     }
-    ghDashState = { enabled, detected: false, descriptor: null, reason: `configured executable failed: ${result.stderr || result.stdout || result.code}` };
+    ghDashState = { enabled, detected: false, descriptor: null, reason: `configured executable failed: ${result.stderr || result.stdout || result.code}`, ghPath: null };
     await vscode.commands.executeCommand('setContext', CTX_DASH_DETECTED, false);
     log(`gh-dash detected=false reason=${ghDashState.reason}`);
     return ghDashState;
@@ -184,6 +186,7 @@ async function detectGhDash(settings = getDashSettings()) {
   }
 
   ghDashState = { enabled, detected: false, descriptor: null, reason: ghPath ? 'gh-dash unavailable' : 'gh unavailable' };
+  ghDashState.ghPath = ghPath;
   await vscode.commands.executeCommand('setContext', CTX_DASH_DETECTED, false);
   log(`gh-dash detected=false reason=${ghDashState.reason}`);
   return ghDashState;
@@ -251,6 +254,122 @@ async function openTerminal() {
   const term = vscode.window.createTerminal({ name: 'gh auth login' });
   term.show(true);
   term.sendText('gh auth login', false);
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+function buildGhDashCommand(descriptor) {
+  const args = [...descriptor.args];
+  return [shellQuote(descriptor.command), ...args.map(shellQuote)].join(' ');
+}
+
+function findTerminal(name) {
+  return vscode.window.terminals.find(term => term.name === name);
+}
+
+async function openGhDashInstall() {
+  const settings = getDashSettings();
+  const state = await detectGhDash(settings);
+  if (state.detected) {
+    vscode.window.showInformationMessage('gh-dash is already available.');
+    return state;
+  }
+  if (!state.ghPath) {
+    vscode.window.showWarningMessage('GitHub CLI is required before gh-dash can be installed. Install gh, then run gh auth login.');
+    return state;
+  }
+
+  const choice = await vscode.window.showInformationMessage(
+    `Install gh-dash with: ${GH_DASH_INSTALL_COMMAND}`,
+    { modal: true },
+    'Open Install Terminal'
+  );
+  if (choice !== 'Open Install Terminal') {
+    log('gh-dash install: user declined install terminal');
+    return state;
+  }
+
+  const term = vscode.window.createTerminal({ name: `${settings.terminalName} install` });
+  term.show(true);
+  term.sendText(GH_DASH_INSTALL_COMMAND, false);
+  log(`gh-dash install: opened terminal with ${GH_DASH_INSTALL_COMMAND}`);
+  return state;
+}
+
+async function ensureGhDashReady() {
+  const ghState = await detectGh();
+  if (!ghState.detected) {
+    const choice = await vscode.window.showWarningMessage(
+      'GitHub CLI is not installed or not visible to shuvscode. Install gh, then run gh auth login.',
+      'Open Terminal'
+    );
+    if (choice === 'Open Terminal') {
+      await openTerminal();
+    }
+    return null;
+  }
+  if (!ghState.authenticated) {
+    const choice = await vscode.window.showWarningMessage(
+      'GitHub CLI is installed but not signed in. Run gh auth login before opening gh-dash.',
+      'Open gh auth login'
+    );
+    if (choice === 'Open gh auth login') {
+      await openTerminal();
+    }
+    return null;
+  }
+  if (!ghState.dash.detected || !ghState.dash.descriptor) {
+    const settings = getDashSettings();
+    if (settings.autoPromptInstall === false) {
+      vscode.window.showWarningMessage('gh-dash is not installed or not visible to shuvscode.');
+      return null;
+    }
+    const choice = await vscode.window.showWarningMessage(
+      'gh-dash is not installed or not visible to shuvscode.',
+      'Install gh-dash'
+    );
+    if (choice === 'Install gh-dash') {
+      await openGhDashInstall();
+    }
+    return null;
+  }
+  return { gh: ghState, settings: getDashSettings() };
+}
+
+async function openGhDash(view = 'dashboard') {
+  const ready = await ensureGhDashReady();
+  if (!ready) {
+    return null;
+  }
+
+  const { gh, settings } = ready;
+  const terminalName = settings.terminalName || 'gh-dash';
+  let term = findTerminal(terminalName);
+  const command = buildGhDashCommand(gh.dash.descriptor);
+
+  if (term) {
+    const choice = await vscode.window.showInformationMessage(
+      `Reuse existing ${terminalName} terminal or restart it with ${command}?`,
+      'Show Existing',
+      'Restart'
+    );
+    if (choice === 'Restart') {
+      term.dispose();
+      term = undefined;
+    } else {
+      term.show(true);
+      log(`gh-dash launch: reused existing terminal name=${terminalName} view=${view}`);
+      return { reused: true, command, descriptor: gh.dash.descriptor, view };
+    }
+  }
+
+  term = vscode.window.createTerminal({ name: terminalName });
+  term.show(true);
+  term.sendText(command, true);
+  log(`gh-dash launch: started terminal name=${terminalName} view=${view} command=${command}`);
+  return { reused: false, command, descriptor: gh.dash.descriptor, view };
 }
 
 async function openInBrowser() {
@@ -416,6 +535,20 @@ function activate(ctx) {
     }),
     vscode.commands.registerCommand('shuvscode.gh.openTerminal', openTerminal),
     vscode.commands.registerCommand('shuvscode.gh.openInBrowser', openInBrowser),
+    vscode.commands.registerCommand('shuvscode.gh.dash.open', () => openGhDash('dashboard')),
+    vscode.commands.registerCommand('shuvscode.gh.dash.openPullRequests', () => openGhDash('pull-requests')),
+    vscode.commands.registerCommand('shuvscode.gh.dash.openIssues', () => openGhDash('issues')),
+    vscode.commands.registerCommand('shuvscode.gh.dash.openNotifications', () => openGhDash('notifications')),
+    vscode.commands.registerCommand('shuvscode.gh.dash.install', openGhDashInstall),
+    vscode.commands.registerCommand('shuvscode.gh.dash.refreshDetection', async () => {
+      const state = await detectGhDash();
+      vscode.window.showInformationMessage(
+        state.detected && state.descriptor
+          ? `gh-dash detected via ${state.descriptor.kind}.`
+          : `gh-dash not detected: ${state.reason}.`
+      );
+      return state;
+    }),
     vscode.commands.registerCommand('shuvscode.gh.resetColocation', async () => {
       await ctx.globalState.update(COLOCATION_STATE_KEY, undefined);
       vscode.window.showInformationMessage('shuvscode: GitHub view colocation flag reset. The next reload will re-run the one-shot move if the setting is enabled.');

@@ -27,6 +27,12 @@
     "onCommand:shuvscode.gh.refreshDetection",
     "onCommand:shuvscode.gh.openTerminal",
     "onCommand:shuvscode.gh.openInBrowser",
+    "onCommand:shuvscode.gh.dash.open",
+    "onCommand:shuvscode.gh.dash.openPullRequests",
+    "onCommand:shuvscode.gh.dash.openIssues",
+    "onCommand:shuvscode.gh.dash.openNotifications",
+    "onCommand:shuvscode.gh.dash.install",
+    "onCommand:shuvscode.gh.dash.refreshDetection",
     "onCommand:shuvscode.gh.resetColocation"
   ],
   "main": "./extension.js",
@@ -53,6 +59,36 @@
       {
         "command": "shuvscode.gh.openInBrowser",
         "title": "Open Repository on GitHub",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.gh.dash.open",
+        "title": "Open gh-dash",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.gh.dash.openPullRequests",
+        "title": "Open gh-dash Pull Requests",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.gh.dash.openIssues",
+        "title": "Open gh-dash Issues",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.gh.dash.openNotifications",
+        "title": "Open gh-dash Notifications",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.gh.dash.install",
+        "title": "Install gh-dash",
+        "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.gh.dash.refreshDetection",
+        "title": "Refresh gh-dash Detection",
         "category": "shuvscode"
       },
       {
