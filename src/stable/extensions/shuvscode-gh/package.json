@@ -68,6 +68,26 @@
           "type": "boolean",
           "default": true,
           "description": "On first activation, move the GitHub Pull Requests, Issues, and Notifications views into the Source Control container so they appear in the same sidebar pane as Repos / Changes / Graph. Has no effect after the move has been performed once per profile; drag the views elsewhere afterwards and shuvscode will not fight the change."
+        },
+        "shuvscode.gh.dash.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Detect gh-dash for terminal-first GitHub dashboard workflows."
+        },
+        "shuvscode.gh.dash.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional explicit gh-dash executable path. When empty, shuvscode tries `gh dash` first, then `gh-dash`."
+        },
+        "shuvscode.gh.dash.terminalName": {
+          "type": "string",
+          "default": "gh-dash",
+          "description": "Terminal name to use for future gh-dash launch commands."
+        },
+        "shuvscode.gh.dash.autoPromptInstall": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prompt before offering gh-dash installation guidance when gh is available but gh-dash is missing."
         }
       }
     },

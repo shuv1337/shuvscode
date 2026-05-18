@@ -15,10 +15,14 @@
 //   raw "no data provider" fallback or a blank panel.
 
 const { execFile } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const vscode = require('vscode');
 
 const CTX_DETECTED = 'shuvscode.gh.detected';
 const CTX_AUTHENTICATED = 'shuvscode.gh.authenticated';
+const CTX_DASH_DETECTED = 'shuvscode.gh.dash.detected';
+const CTX_DASH_ENABLED = 'shuvscode.gh.dash.enabled';
 
 // Scope set requested by the GitHub Pull Requests extension by default.
 // Matches vscode-pull-request-github's call to getSession().
@@ -26,6 +30,12 @@ const DEFAULT_SCOPES = ['read:user', 'user:email', 'repo', 'workflow'];
 
 let output;
 let loginProvider;
+let ghDashState = {
+  enabled: true,
+  detected: false,
+  descriptor: null,
+  reason: 'not-started'
+};
 
 function log(line) {
   if (!output) {
@@ -62,8 +72,126 @@ function run(cmd, args, { timeoutMs = 4000 } = {}) {
   });
 }
 
+function executableSearchPaths(extraPath = '') {
+  const home = process.env.HOME || '';
+  const paths = String(extraPath || process.env.PATH || '')
+    .split(path.delimiter)
+    .filter(Boolean);
+  for (const fallback of ['/usr/bin', '/usr/local/bin', home ? path.join(home, '.local/bin') : '']) {
+    if (fallback && !paths.includes(fallback)) {
+      paths.push(fallback);
+    }
+  }
+  return paths;
+}
+
+function isExecutable(file) {
+  try {
+    fs.accessSync(file, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveExecutable(command, extraPath = '') {
+  if (!command) {
+    return null;
+  }
+  if (path.isAbsolute(command) || command.includes(path.sep)) {
+    return isExecutable(command) ? command : null;
+  }
+  for (const dir of executableSearchPaths(extraPath)) {
+    const candidate = path.join(dir, command);
+    if (isExecutable(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function getDashSettings() {
+  const cfg = vscode.workspace.getConfiguration('shuvscode.gh.dash');
+  return {
+    enabled: cfg.get('enabled', true),
+    executablePath: String(cfg.get('executablePath', '') || '').trim(),
+    terminalName: String(cfg.get('terminalName', 'gh-dash') || 'gh-dash'),
+    autoPromptInstall: cfg.get('autoPromptInstall', true)
+  };
+}
+
+async function detectGhDash(settings = getDashSettings()) {
+  const enabled = settings.enabled !== false;
+  await vscode.commands.executeCommand('setContext', CTX_DASH_ENABLED, enabled);
+
+  if (!enabled) {
+    ghDashState = { enabled, detected: false, descriptor: null, reason: 'disabled by setting' };
+    await vscode.commands.executeCommand('setContext', CTX_DASH_DETECTED, false);
+    log('gh-dash detected=false reason=disabled by setting');
+    return ghDashState;
+  }
+
+  if (settings.executablePath) {
+    const configured = settings.executablePath;
+    const result = await run(configured, ['--help']);
+    if (result.ok) {
+      ghDashState = {
+        enabled,
+        detected: true,
+        descriptor: { command: configured, args: [], kind: 'configured-gh-dash' },
+        reason: 'configured executable'
+      };
+      await vscode.commands.executeCommand('setContext', CTX_DASH_DETECTED, true);
+      log(`gh-dash detected=true kind=configured-gh-dash command=${configured}`);
+      return ghDashState;
+    }
+    ghDashState = { enabled, detected: false, descriptor: null, reason: `configured executable failed: ${result.stderr || result.stdout || result.code}` };
+    await vscode.commands.executeCommand('setContext', CTX_DASH_DETECTED, false);
+    log(`gh-dash detected=false reason=${ghDashState.reason}`);
+    return ghDashState;
+  }
+
+  const ghPath = resolveExecutable('gh');
+  if (ghPath) {
+    const result = await run(ghPath, ['dash', '--help']);
+    if (result.ok) {
+      ghDashState = {
+        enabled,
+        detected: true,
+        descriptor: { command: ghPath, args: ['dash'], kind: 'gh-extension' },
+        reason: 'gh dash extension'
+      };
+      await vscode.commands.executeCommand('setContext', CTX_DASH_DETECTED, true);
+      log(`gh-dash detected=true kind=gh-extension command=${ghPath}`);
+      return ghDashState;
+    }
+  }
+
+  const ghDashPath = resolveExecutable('gh-dash');
+  if (ghDashPath) {
+    const result = await run(ghDashPath, ['--help']);
+    if (result.ok) {
+      ghDashState = {
+        enabled,
+        detected: true,
+        descriptor: { command: ghDashPath, args: [], kind: 'standalone-gh-dash' },
+        reason: 'standalone gh-dash'
+      };
+      await vscode.commands.executeCommand('setContext', CTX_DASH_DETECTED, true);
+      log(`gh-dash detected=true kind=standalone-gh-dash command=${ghDashPath}`);
+      return ghDashState;
+    }
+  }
+
+  ghDashState = { enabled, detected: false, descriptor: null, reason: ghPath ? 'gh-dash unavailable' : 'gh unavailable' };
+  await vscode.commands.executeCommand('setContext', CTX_DASH_DETECTED, false);
+  log(`gh-dash detected=false reason=${ghDashState.reason}`);
+  return ghDashState;
+}
+
 async function detectGh() {
-  const versionResult = await run('gh', ['--version']);
+  const ghPath = resolveExecutable('gh') || 'gh';
+  const versionResult = await run(ghPath, ['--version']);
   const detected = versionResult.ok;
   await vscode.commands.executeCommand('setContext', CTX_DETECTED, detected);
 
@@ -71,7 +199,7 @@ async function detectGh() {
   let user = null;
   if (detected) {
     // `gh auth status` exits 0 when authenticated to at least one host.
-    const status = await run('gh', ['auth', 'status', '--hostname', 'github.com']);
+    const status = await run(ghPath, ['auth', 'status', '--hostname', 'github.com']);
     authenticated = status.ok;
     if (authenticated) {
       // Parse "Logged in to github.com as <user>" line; fall back to api call.
@@ -79,7 +207,7 @@ async function detectGh() {
       if (match) {
         user = match[1];
       } else {
-        const api = await run('gh', ['api', 'user', '--jq', '.login'], { timeoutMs: 6000 });
+        const api = await run(ghPath, ['api', 'user', '--jq', '.login'], { timeoutMs: 6000 });
         if (api.ok) {
           user = api.stdout.trim() || null;
         }
@@ -88,11 +216,12 @@ async function detectGh() {
   }
   await vscode.commands.executeCommand('setContext', CTX_AUTHENTICATED, authenticated);
 
-  const state = { detected, authenticated, user };
+  const dash = await detectGhDash();
+  const state = { detected, authenticated, user, dash };
   if (loginProvider) {
     loginProvider.setState(state);
   }
-  log(`gh detected=${detected} authenticated=${authenticated} user=${user || '<none>'}`);
+  log(`gh detected=${detected} authenticated=${authenticated} user=${user || '<none>'} command=${detected ? ghPath : '<none>'}`);
   return state;
 }
 
