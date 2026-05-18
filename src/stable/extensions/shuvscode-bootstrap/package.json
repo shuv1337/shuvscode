@@ -10,7 +10,14 @@
   "categories": [
     "Other"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": true
+  },
   "activationEvents": [
+    "*",
     "onStartupFinished",
     "onCommand:shuvscode.layout.reset",
     "onCommand:shuvscode.layout.unlock",
