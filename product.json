@@ -230,7 +230,6 @@
       "contribCommentThreadAdditionalMenu",
       "contribCommentsViewThreadMenus",
       "contribEditorContentMenu",
-      "contribMultiDiffEditorMenus",
       "contribShareMenu",
       "diffCommand",
       "languageModelToolResultAudience",
@@ -239,7 +238,6 @@
       "remoteCodingAgents",
       "shareProvider",
       "tabInputMultiDiff",
-      "tabInputTextMerge",
       "tokenInformation",
       "treeItemMarkdownLabel",
       "treeViewMarkdownMessage"
@@ -439,9 +437,6 @@
     ],
     "jeanp413.open-remote-ssh": [
       "resolvers",
-      "tunnels",
-      "terminalDataWriteEvent",
-      "contribRemoteHelp",
       "contribViewsRemote"
     ],
     "jeanp413.open-remote-wsl": [
@@ -627,5 +622,94 @@
     "gruntfuggly.todo-tree": {
       "default": false
     }
-  }
+  },
+  "nameShort": "shuvscode",
+  "nameLong": "shuvscode",
+  "applicationName": "shuvscode",
+  "dataFolderName": ".shuvscode",
+  "linuxIconName": "shuvscode",
+  "darwinBundleIdentifier": "io.github.shuv1337.shuvscode",
+  "darwinApplicationCategoryType": "public.app-category.developer-tools",
+  "quality": "stable",
+  "urlProtocol": "shuvscode",
+  "serverApplicationName": "shuvscode-server",
+  "serverDataFolderName": ".shuvscode-server",
+  "tunnelApplicationName": "shuvscode-tunnel",
+  "reportIssueUrl": "https://github.com/shuv1337/shuvscode/issues/new",
+  "requestFeatureUrl": "https://github.com/shuv1337/shuvscode/issues/new",
+  "licenseUrl": "https://github.com/shuv1337/shuvscode/blob/shuvscode-main/LICENSE",
+  "linkProtectionTrustedDomains": [
+    "https://open-vsx.org",
+    "https://github.com/shuv1337/shuvscode"
+  ],
+  "configurationDefaults": {
+    "extensions.autoCheckUpdates": false,
+    "extensions.autoUpdate": false,
+    "update.showReleaseNotes": false,
+    "workbench.enableExperiments": false,
+    "telemetry.telemetryLevel": "off"
+  },
+  "extensionTips": {},
+  "extensionImportantTips": {},
+  "keymapExtensionTips": [],
+  "languageExtensionTips": [],
+  "configBasedExtensionTips": {},
+  "extensionKeywords": {},
+  "builtInExtensions": [
+    {
+      "name": "detachhead.basedpyright",
+      "version": "1.39.3",
+      "sha256": "bae5a44b18ec63b64bd50530aa48b03d337ca06524b5f9bbfc782fdc49e682a7",
+      "repo": "https://github.com/detachhead/basedpyright",
+      "metadata": {
+        "id": "04b68fbe-ec38-5284-870e-855775f8126d",
+        "publisherId": {
+          "publisherId": "3cbdb031-446d-51c7-a0b4-fa2bafb6ac8c",
+          "publisherName": "detachhead",
+          "displayName": "detachhead",
+          "flags": "verified"
+        },
+        "publisherDisplayName": "detachhead"
+      }
+    },
+    {
+      "name": "EditorConfig.EditorConfig",
+      "version": "0.18.2",
+      "sha256": "cbc0370ff204bc16d84a3ee6830536fc04355856fa0e895ab064e1a03cfcb84a",
+      "repo": "https://github.com/editorconfig/editorconfig-vscode",
+      "metadata": {
+        "id": "88fe3c7b-8c9e-531c-a8c0-7a65bea9c4b3",
+        "publisherId": {
+          "publisherId": "2878184e-6686-56f2-9ff2-db6b3e9e3166",
+          "publisherName": "EditorConfig",
+          "displayName": "EditorConfig",
+          "flags": "verified"
+        },
+        "publisherDisplayName": "EditorConfig"
+      }
+    },
+    {
+      "name": "GitHub.vscode-pull-request-github",
+      "version": "0.144.0",
+      "sha256": "c9358907d2d3a3a70989e264b362a66b8b4f31f718115902dec2a513ec64c372",
+      "repo": "https://github.com/microsoft/vscode-pull-request-github",
+      "vsix": "../assets/extensions/GitHub.vscode-pull-request-github-0.144.0.vsix",
+      "metadata": {
+        "id": "69ddd764-339a-4ecc-97c1-9c4ece58e36d",
+        "publisherId": {
+          "publisherId": "github",
+          "publisherName": "GitHub",
+          "displayName": "GitHub",
+          "flags": "verified"
+        },
+        "publisherDisplayName": "GitHub"
+      }
+    }
+  ],
+  "trustedExtensionPublishers": [
+    "detachhead",
+    "editorconfig",
+    "github",
+    "shuvscode"
+  ]
 }

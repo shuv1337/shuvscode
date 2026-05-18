@@ -162,6 +162,12 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "git.readHunkReviewNotes",
+        "title": "%command.readHunkReviewNotes%",
+        "category": "Git",
+        "icon": "$(note)"
+      },
+      {
         "command": "git.openAllChanges",
         "title": "%command.openAllChanges%",
         "category": "Git"
@@ -1281,6 +1287,10 @@
         },
         {
           "command": "git.openHunkDiff",
+          "when": "config.git.enabled && !git.missing && gitOpenRepositoryCount != 0"
+        },
+        {
+          "command": "git.readHunkReviewNotes",
           "when": "config.git.enabled && !git.missing && gitOpenRepositoryCount != 0"
         },
         {
@@ -3938,6 +3948,28 @@
           "scope": "resource",
           "default": true,
           "description": "%config.hunkEditorCleanMode%"
+        },
+        "git.hunkWatchMode": {
+          "type": "boolean",
+          "scope": "resource",
+          "default": false,
+          "description": "%config.hunkWatchMode%"
+        },
+        "git.hunkAgentNotes": {
+          "type": "string",
+          "enum": [
+            "default",
+            "show",
+            "hide"
+          ],
+          "enumDescriptions": [
+            "%config.hunkAgentNotes.default%",
+            "%config.hunkAgentNotes.show%",
+            "%config.hunkAgentNotes.hide%"
+          ],
+          "scope": "resource",
+          "default": "default",
+          "description": "%config.hunkAgentNotes%"
         },
         "git.supportCancellation": {
           "type": "boolean",

@@ -411,6 +411,21 @@ async function categorizeResourceByResolution(resources: Resource[]): Promise<{ 
 	return { merge, resolved, unresolved, deletionConflicts };
 }
 
+interface HunkReviewNote {
+	noteId: string;
+	source: 'ai' | 'agent' | 'user';
+	filePath: string;
+	hunkIndex?: number;
+	oldRange?: [number, number];
+	newRange?: [number, number];
+	body: string;
+	title?: string;
+	author?: string;
+	createdAt: string;
+	updatedAt?: string;
+	editable: boolean;
+}
+
 async function canLaunchHunkCommand(command: string): Promise<boolean> {
 	return new Promise<boolean>(resolve => {
 		execFile(command, ['--version'], { timeout: 3000 }, error => resolve(!error));
@@ -1514,6 +1529,8 @@ export class CommandCenter {
 			const hunkCommand = config.get<string>('hunkCommand', 'hunk') || 'hunk';
 			const hunkTheme = config.get<string>('hunkTheme', 'night-owl')?.trim();
 			const hunkEditorCleanMode = config.get<boolean>('hunkEditorCleanMode', true);
+			const hunkWatchMode = config.get<boolean>('hunkWatchMode', false);
+			const hunkAgentNotes = config.get<'default' | 'show' | 'hide'>('hunkAgentNotes', 'default');
 
 			let canLaunch = verifiedHunkCommands.get(hunkCommand);
 			if (canLaunch === undefined) {
@@ -1528,9 +1545,15 @@ export class CommandCenter {
 
 			const themeArgs = hunkTheme ? ['--theme', hunkTheme] : [];
 			const cleanModeArgs = hunkEditorCleanMode ? ['--pager'] : [];
+			const watchArgs = hunkWatchMode ? ['--watch'] : [];
+			const agentNotesArgs = hunkAgentNotes === 'show'
+				? ['--agent-notes']
+				: hunkAgentNotes === 'hide'
+					? ['--no-agent-notes']
+					: [];
 			const shellArgs = resource.resourceGroupType === ResourceGroupType.Index
-				? ['diff', '--staged', ...themeArgs, ...cleanModeArgs, '--', relativeResourcePath]
-				: ['diff', ...themeArgs, ...cleanModeArgs, '--', relativeResourcePath];
+				? ['diff', '--staged', ...themeArgs, ...cleanModeArgs, ...watchArgs, ...agentNotesArgs, '--', relativeResourcePath]
+				: ['diff', ...themeArgs, ...cleanModeArgs, ...watchArgs, ...agentNotesArgs, '--', relativeResourcePath];
 			const terminal = window.createTerminal({
 				name: `Hunk: ${path.basename(relativeResourcePath)}`,
 				shellPath: hunkCommand,
@@ -1542,6 +1565,65 @@ export class CommandCenter {
 
 			terminal.show();
 		}
+	}
+
+	@command('git.readHunkReviewNotes')
+	async readHunkReviewNotes(repository?: Repository): Promise<{ notes: HunkReviewNote[]; error?: string }> {
+		// Agent-facing API: resolve a repository without prompting the user.
+		if (!repository) {
+			const resource = this.getSCMResource();
+			if (resource) {
+				repository = this.model.getRepository(resource.resourceUri);
+			}
+		}
+
+		if (!repository && this.model.repositories.length === 1) {
+			repository = this.model.repositories[0];
+		}
+
+		if (!repository) {
+			const message = 'No Git repository was found for reading Hunk review notes.';
+			this.logger.warn(`[readHunkReviewNotes] ${message}`);
+			return { notes: [], error: message };
+		}
+
+		const config = workspace.getConfiguration('git', Uri.file(repository.root));
+		const hunkCommand = config.get<string>('hunkCommand', 'hunk') || 'hunk';
+
+		const canLaunch = await canLaunchHunkCommand(hunkCommand);
+		if (!canLaunch) {
+			const message = `Hunk command "${hunkCommand}" is not available. Install Hunk or update git.hunkCommand.`;
+			this.logger.warn(`[readHunkReviewNotes] ${message}`);
+			return { notes: [], error: message };
+		}
+
+		const repoRoot = repository.root;
+		return new Promise<{ notes: HunkReviewNote[]; error?: string }>((resolve) => {
+			execFile(
+				hunkCommand,
+				['session', 'comment', 'list', '--repo', repoRoot, '--type', 'user', '--json'],
+				{ timeout: 5000, cwd: repoRoot },
+				(error, stdout, stderr) => {
+					if (error) {
+						const stderrText = stderr.trim();
+						const errMessage = stderrText || error.message;
+						this.logger.warn(`[readHunkReviewNotes] hunk session comment list failed: ${errMessage}`);
+						resolve({ notes: [], error: errMessage });
+						return;
+					}
+
+					try {
+						const result = JSON.parse(stdout);
+						const notes = Array.isArray(result?.comments) ? result.comments as HunkReviewNote[] : [];
+						resolve({ notes });
+					} catch (parseError) {
+						const errMessage = `Failed to parse Hunk session output: ${(parseError as Error).message}`;
+						this.logger.warn(`[readHunkReviewNotes] ${errMessage}`);
+						resolve({ notes: [], error: errMessage });
+					}
+				}
+			);
+		});
 	}
 
 	@command('git.compareWithWorkspace')
