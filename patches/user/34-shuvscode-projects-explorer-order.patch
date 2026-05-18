@@ -1,0 +1,22 @@
+diff --git a/src/vs/workbench/api/browser/viewsExtensionPoint.ts b/src/vs/workbench/api/browser/viewsExtensionPoint.ts
+index 6a13d36..a4e4d95 100644
+--- a/src/vs/workbench/api/browser/viewsExtensionPoint.ts
++++ b/src/vs/workbench/api/browser/viewsExtensionPoint.ts
+@@ -487,11 +487,16 @@ export class ViewsExtensionHandler implements IWorkbenchContribution {
+ 						continue;
+ 					}
+ 
+-					const order = ExtensionIdentifier.equals(extension.description.identifier, container.extensionId)
++					let order = ExtensionIdentifier.equals(extension.description.identifier, container.extensionId)
+ 						? index + 1
+ 						: container.viewOrderDelegate
+ 							? container.viewOrderDelegate.getOrder(item.group)
+ 							: undefined;
++
++					// shuvscode: keep the native Projects tree at the top of Explorer, above the file tree.
++					if (container.id === EXPLORER && item.id === 'shuvscodeProjects.projects') {
++						order = 0.5;
++					}
+ 
+ 					let icon: ThemeIcon | URI | undefined;
+ 					if (typeof item.icon === 'string') {

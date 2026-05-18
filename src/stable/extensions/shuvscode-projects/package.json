@@ -34,27 +34,20 @@
     "onCommand:shuvscodeProjects.switchToWindow",
     "onCommand:shuvscodeProjects.openMultiplexerTerminal",
     "onCommand:shuvscodeProjects.openManagedZellij",
-    "onCommand:shuvscodeProjects.fastSwitchProject"
+    "onCommand:shuvscodeProjects.fastSwitchProject",
+    "onCommand:shuvscode.projects.focus"
   ],
   "main": "./extension.js",
   "extensionKind": [
     "ui"
   ],
   "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "shuvscode-projects",
-          "title": "Projects",
-          "icon": "$(folder-library)"
-        }
-      ]
-    },
     "views": {
-      "shuvscode-projects": [
+      "explorer": [
         {
           "id": "shuvscodeProjects.projects",
-          "name": "Projects"
+          "name": "Projects",
+          "visibility": "visible"
         }
       ]
     },
@@ -154,6 +147,12 @@
         "title": "Fast Switch Project",
         "category": "Projects",
         "icon": "$(zap)"
+      },
+      {
+        "command": "shuvscode.projects.focus",
+        "title": "Focus Projects",
+        "category": "shuvscode",
+        "icon": "$(folder-library)"
       }
     ],
     "menus": {

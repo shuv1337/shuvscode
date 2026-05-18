@@ -113,15 +113,16 @@ async function activate(ctx) {
     vscode.commands.registerCommand('shuvscode.layout.status', () => showLayoutStatus(ctx))
   );
 
-  await evaluateLayout(ctx);
+  const layoutResult = await evaluateLayout(ctx);
 
   if (!enabled) {
     return;
   }
 
-  if (!ctx.globalState.get(STATE_KEYS.canvasScmOpened)) {
+  if (layoutResult.decision.shouldApply || !ctx.globalState.get(STATE_KEYS.canvasScmOpened)) {
     try {
-      await vscode.commands.executeCommand('workbench.view.scm');
+      await vscode.commands.executeCommand('workbench.view.explorer');
+      await ctx.globalState.update(STATE_KEYS.appliedVersion, layoutResult.snapshot.targetVersion);
       await ctx.globalState.update(STATE_KEYS.canvasScmOpened, true);
     } catch {
       // Non-fatal: keep bootstrap extension install behavior independent.

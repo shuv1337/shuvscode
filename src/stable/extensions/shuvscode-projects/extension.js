@@ -20,6 +20,11 @@ const HAS_ACTIVE_PROJECT_CONTEXT = 'shuvscode.projects.hasActiveProject';
 let windowRegistry; // exposed for deactivate cleanup
 let zellijManager;
 
+async function focusProjectsView() {
+  await vscode.commands.executeCommand('workbench.view.explorer');
+  await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
+}
+
 function activate(ctx) {
   const store = new ProjectStore(ctx);
   const activeProjects = new ActiveProjectStore(ctx);
@@ -139,6 +144,7 @@ function activate(ctx) {
     vscode.commands.registerCommand('shuvscodeProjects.fastSwitchProject', async item => {
       await fastSwitchProject(store, provider, activeProjects, zellijManager, status, item);
     }),
+    vscode.commands.registerCommand('shuvscode.projects.focus', focusProjectsView),
     // Auto-open a project-scoped multiplexer terminal when a project loads,
     // if the user opted in via shuvscode.projects.autoOpenMultiplexer.
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
