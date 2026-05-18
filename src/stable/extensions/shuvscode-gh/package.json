@@ -26,7 +26,8 @@
     "onCommand:shuvscode.gh.signIn",
     "onCommand:shuvscode.gh.refreshDetection",
     "onCommand:shuvscode.gh.openTerminal",
-    "onCommand:shuvscode.gh.openInBrowser"
+    "onCommand:shuvscode.gh.openInBrowser",
+    "onCommand:shuvscode.gh.resetColocation"
   ],
   "main": "./extension.js",
   "extensionKind": [
@@ -53,8 +54,23 @@
         "command": "shuvscode.gh.openInBrowser",
         "title": "Open Repository on GitHub",
         "category": "shuvscode"
+      },
+      {
+        "command": "shuvscode.gh.resetColocation",
+        "title": "Reset GitHub view colocation flag",
+        "category": "shuvscode"
       }
     ],
+    "configuration": {
+      "title": "shuvscode GitHub",
+      "properties": {
+        "shuvscode.gh.colocateWithSourceControl": {
+          "type": "boolean",
+          "default": true,
+          "description": "On first activation, move the GitHub Pull Requests, Issues, and Notifications views into the Source Control container so they appear in the same sidebar pane as Repos / Changes / Graph. Has no effect after the move has been performed once per profile; drag the views elsewhere afterwards and shuvscode will not fight the change."
+        }
+      }
+    },
     "viewsWelcome": [
       {
         "view": "github:login",

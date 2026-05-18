@@ -201,6 +201,44 @@ function registerLoginProvider(ctx, viewId) {
   }
 }
 
+// Moves the GitHub Pull Requests / Issues / Notifications views into the
+// Source Control container the first time the extension activates with the
+// `shuvscode.gh.colocateWithSourceControl` setting enabled. Persists a flag in
+// globalState so we never re-run on subsequent activations — once the user has
+// the views in SCM (or has dragged them somewhere else after the move), we
+// leave the layout alone.
+//
+// Why this exists: shuvscode users typically run with
+// `workbench.sideBar.experimental.splitWithSecondarySideBar` and keep Source
+// Control in the right (auxiliary) sidebar. Pull Requests / Issues feel
+// orphaned in the activity bar; colocating them with Source Control puts all
+// the "what does my repo look like right now" UI in one place.
+const COLOCATION_STATE_KEY = 'shuvscode.gh.colocatedWithSourceControl';
+const COLOCATED_VIEW_IDS = ['pr:github', 'issues:github', 'notifications:github'];
+const COLOCATION_DESTINATION_ID = 'workbench.view.scm';
+
+async function colocateWithSourceControlIfNeeded(ctx) {
+  const cfg = vscode.workspace.getConfiguration('shuvscode.gh');
+  if (!cfg.get('colocateWithSourceControl', true)) {
+    log('colocateWithSourceControl: disabled by setting');
+    return;
+  }
+  if (ctx.globalState.get(COLOCATION_STATE_KEY)) {
+    log('colocateWithSourceControl: already colocated, skipping');
+    return;
+  }
+  try {
+    await vscode.commands.executeCommand('vscode.moveViews', {
+      viewIds: COLOCATED_VIEW_IDS,
+      destinationId: COLOCATION_DESTINATION_ID
+    });
+    await ctx.globalState.update(COLOCATION_STATE_KEY, true);
+    log(`colocateWithSourceControl: moved ${COLOCATED_VIEW_IDS.join(', ')} into ${COLOCATION_DESTINATION_ID}`);
+  } catch (e) {
+    log(`colocateWithSourceControl: failed: ${e && e.message || e}`);
+  }
+}
+
 function activate(ctx) {
   log('activating shuvscode-gh');
 
@@ -220,10 +258,17 @@ function activate(ctx) {
     }),
     vscode.commands.registerCommand('shuvscode.gh.openTerminal', openTerminal),
     vscode.commands.registerCommand('shuvscode.gh.openInBrowser', openInBrowser),
+    vscode.commands.registerCommand('shuvscode.gh.resetColocation', async () => {
+      await ctx.globalState.update(COLOCATION_STATE_KEY, undefined);
+      vscode.window.showInformationMessage('shuvscode: GitHub view colocation flag reset. The next reload will re-run the one-shot move if the setting is enabled.');
+    }),
   );
 
   // Initial detection — non-blocking.
   detectGh().catch(e => log(`detect failed: ${e && e.message || e}`));
+
+  // Colocation — non-blocking, idempotent (guarded by globalState).
+  colocateWithSourceControlIfNeeded(ctx).catch(e => log(`colocate failed: ${e && e.message || e}`));
 
   // Re-detect when a terminal closes (user may have just run `gh auth login`).
   ctx.subscriptions.push(
