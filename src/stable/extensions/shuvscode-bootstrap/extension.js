@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const {
   CURRENT_LAYOUT_VERSION,
   STATE_KEYS,
+  STATUS,
   decideLayout,
   readLayoutSnapshot
 } = require('./layoutState');
@@ -12,6 +13,10 @@ const SCM_READY_COMMAND = 'shuvscode.layout.whenScmReady';
 let output;
 let scmReadyState = { ready: false, reason: 'not-started' };
 let scmReadyWaiters = [];
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function getOutput() {
   if (!output) {
@@ -128,9 +133,20 @@ async function applyEditorGrid(snapshot) {
   return { ok: failures.length === 0, results };
 }
 
-async function applyOpinionatedLayout(ctx, snapshot) {
+async function applyOpinionatedLayout(ctx, snapshot, { deferMs = 0 } = {}) {
   try {
+    if (deferMs > 0) {
+      log(`layout apply: waiting ${deferMs}ms for workbench restore`, snapshot.debugLogging);
+      await delay(deferMs);
+    }
     const editorGrid = await applyEditorGrid(snapshot);
+    if (!editorGrid.ok) {
+      const failedCommands = editorGrid.results
+        .filter(result => !result.ok)
+        .map(result => result.command)
+        .join(', ');
+      throw new Error(`editor grid command failure: ${failedCommands}`);
+    }
     await vscode.commands.executeCommand('workbench.view.explorer');
     await vscode.commands.executeCommand('workbench.view.scm');
     await vscode.commands.executeCommand('workbench.view.explorer');
@@ -141,6 +157,7 @@ async function applyOpinionatedLayout(ctx, snapshot) {
     return { scm: state, editorGrid };
   } catch (e) {
     const reason = `source control open failed: ${e && e.message || e}`;
+    await updateLastApply(ctx, STATUS.failed);
     const state = await setScmReady({ ready: false, reason, final: true });
     log(`scm readiness: failed reason=${reason}`, snapshot.debugLogging);
     return state;
@@ -230,7 +247,7 @@ async function activate(ctx) {
   }
 
   if (layoutResult.decision.shouldApply || !ctx.globalState.get(STATE_KEYS.canvasScmOpened)) {
-    await applyOpinionatedLayout(ctx, layoutResult.snapshot);
+    await applyOpinionatedLayout(ctx, layoutResult.snapshot, { deferMs: 2000 });
   }
 
   if (ctx.globalState.get(STATE_KEYS.bootstrapped)) {
