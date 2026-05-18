@@ -7,7 +7,11 @@ const {
 } = require('./layoutState');
 
 const EXTENSIONS = [];
+const CTX_SCM_READY = 'shuvscode.layout.scmReady';
+const SCM_READY_COMMAND = 'shuvscode.layout.whenScmReady';
 let output;
+let scmReadyState = { ready: false, reason: 'not-started' };
+let scmReadyWaiters = [];
 
 function getOutput() {
   if (!output) {
@@ -41,6 +45,71 @@ async function updateLastApply(ctx, status) {
 function snapshotFor(ctx) {
   const settings = getLayoutSettings();
   return readLayoutSnapshot(key => ctx.globalState.get(key), settings);
+}
+
+function resolveScmReadyWaiters(state) {
+  const waiters = scmReadyWaiters;
+  scmReadyWaiters = [];
+  for (const resolve of waiters) {
+    resolve(state);
+  }
+}
+
+async function setScmReady(state) {
+  scmReadyState = {
+    ready: state.ready === true,
+    reason: state.reason || (state.ready ? 'ready' : 'not-ready'),
+    at: new Date().toISOString()
+  };
+  await vscode.commands.executeCommand('setContext', CTX_SCM_READY, scmReadyState.ready);
+  if (scmReadyState.ready || state.final === true) {
+    resolveScmReadyWaiters(scmReadyState);
+  }
+  return scmReadyState;
+}
+
+function whenScmReady({ timeoutMs = 4000 } = {}) {
+  if (scmReadyState.ready) {
+    return Promise.resolve(scmReadyState);
+  }
+  const safeTimeout = Math.max(0, Number(timeoutMs) || 0);
+  return new Promise(resolve => {
+    const timeout = setTimeout(() => {
+      scmReadyWaiters = scmReadyWaiters.filter(waiter => waiter !== finish);
+      resolve({
+        ready: false,
+        reason: scmReadyState.reason === 'not-started' ? 'timeout' : scmReadyState.reason,
+        at: new Date().toISOString()
+      });
+    }, safeTimeout);
+    const finish = state => {
+      clearTimeout(timeout);
+      resolve(state);
+    };
+    scmReadyWaiters.push(finish);
+  });
+}
+
+function getScmReadyState() {
+  return scmReadyState;
+}
+
+async function openExplorerAndSourceControl(ctx, snapshot) {
+  try {
+    await vscode.commands.executeCommand('workbench.view.explorer');
+    await vscode.commands.executeCommand('workbench.view.scm');
+    await vscode.commands.executeCommand('workbench.view.explorer');
+    await ctx.globalState.update(STATE_KEYS.appliedVersion, snapshot.targetVersion);
+    await ctx.globalState.update(STATE_KEYS.canvasScmOpened, true);
+    const state = await setScmReady({ ready: true, reason: 'source control opened by layout orchestrator' });
+    log(`scm readiness: ready reason=${state.reason}`, snapshot.debugLogging);
+    return state;
+  } catch (e) {
+    const reason = `source control open failed: ${e && e.message || e}`;
+    const state = await setScmReady({ ready: false, reason, final: true });
+    log(`scm readiness: failed reason=${reason}`, snapshot.debugLogging);
+    return state;
+  }
 }
 
 async function evaluateLayout(ctx, { force = false } = {}) {
@@ -110,27 +179,24 @@ async function activate(ctx) {
     vscode.commands.registerCommand('shuvscode.layout.reset', () => resetLayout(ctx)),
     vscode.commands.registerCommand('shuvscode.layout.unlock', () => unlockLayout(ctx)),
     vscode.commands.registerCommand('shuvscode.layout.lock', () => lockLayout(ctx)),
-    vscode.commands.registerCommand('shuvscode.layout.status', () => showLayoutStatus(ctx))
+    vscode.commands.registerCommand('shuvscode.layout.status', () => showLayoutStatus(ctx)),
+    vscode.commands.registerCommand(SCM_READY_COMMAND, options => whenScmReady(options))
   );
+  await setScmReady({ ready: false, reason: 'layout activation started' });
 
   const layoutResult = await evaluateLayout(ctx);
 
   if (!enabled) {
-    return;
+    await setScmReady({ ready: false, reason: 'bootstrap disabled', final: true });
+    return { whenScmReady, getScmReadyState };
   }
 
   if (layoutResult.decision.shouldApply || !ctx.globalState.get(STATE_KEYS.canvasScmOpened)) {
-    try {
-      await vscode.commands.executeCommand('workbench.view.explorer');
-      await ctx.globalState.update(STATE_KEYS.appliedVersion, layoutResult.snapshot.targetVersion);
-      await ctx.globalState.update(STATE_KEYS.canvasScmOpened, true);
-    } catch {
-      // Non-fatal: keep bootstrap extension install behavior independent.
-    }
+    await openExplorerAndSourceControl(ctx, layoutResult.snapshot);
   }
 
   if (ctx.globalState.get(STATE_KEYS.bootstrapped)) {
-    return;
+    return { whenScmReady, getScmReadyState };
   }
 
   const results = await Promise.allSettled(
@@ -149,6 +215,8 @@ async function activate(ctx) {
   if (!anyFailure) {
     await ctx.globalState.update(STATE_KEYS.bootstrapped, true);
   }
+
+  return { whenScmReady, getScmReadyState };
 }
 
 function deactivate() {
@@ -160,5 +228,7 @@ function deactivate() {
 
 module.exports = {
   activate,
-  deactivate
+  deactivate,
+  whenScmReady,
+  getScmReadyState
 };

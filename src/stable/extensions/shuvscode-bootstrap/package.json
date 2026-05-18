@@ -15,7 +15,8 @@
     "onCommand:shuvscode.layout.reset",
     "onCommand:shuvscode.layout.unlock",
     "onCommand:shuvscode.layout.lock",
-    "onCommand:shuvscode.layout.status"
+    "onCommand:shuvscode.layout.status",
+    "onCommand:shuvscode.layout.whenScmReady"
   ],
   "main": "./extension.js",
   "extensionKind": [

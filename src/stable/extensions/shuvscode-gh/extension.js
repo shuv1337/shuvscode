@@ -216,6 +216,29 @@ function registerLoginProvider(ctx, viewId) {
 const COLOCATION_STATE_KEY = 'shuvscode.gh.colocatedWithSourceControl';
 const COLOCATED_VIEW_IDS = ['pr:github', 'issues:github', 'notifications:github'];
 const COLOCATION_DESTINATION_ID = 'workbench.view.scm';
+const LAYOUT_EXTENSION_ID = 'shuvscode.shuvscode-bootstrap';
+
+async function waitForScmReadiness({ timeoutMs = 4000 } = {}) {
+  const extension = vscode.extensions.getExtension(LAYOUT_EXTENSION_ID);
+  if (!extension) {
+    return { ready: false, reason: 'layout extension unavailable' };
+  }
+
+  try {
+    const api = extension.isActive ? extension.exports : await extension.activate();
+    if (api && typeof api.whenScmReady === 'function') {
+      return await api.whenScmReady({ timeoutMs });
+    }
+  } catch (e) {
+    log(`colocateWithSourceControl: layout readiness API failed: ${e && e.message || e}`);
+  }
+
+  try {
+    return await vscode.commands.executeCommand('shuvscode.layout.whenScmReady', { timeoutMs });
+  } catch (e) {
+    return { ready: false, reason: `layout readiness command unavailable: ${e && e.message || e}` };
+  }
+}
 
 async function colocateWithSourceControlIfNeeded(ctx) {
   const cfg = vscode.workspace.getConfiguration('shuvscode.gh');
@@ -228,6 +251,12 @@ async function colocateWithSourceControlIfNeeded(ctx) {
     return;
   }
   try {
+    const readiness = await waitForScmReadiness({ timeoutMs: 4000 });
+    if (readiness.ready) {
+      log(`colocateWithSourceControl: scm ready (${readiness.reason})`);
+    } else {
+      log(`colocateWithSourceControl: scm readiness fallback (${readiness.reason || 'unknown'})`);
+    }
     await vscode.commands.executeCommand('vscode.moveViews', {
       viewIds: COLOCATED_VIEW_IDS,
       destinationId: COLOCATION_DESTINATION_ID
