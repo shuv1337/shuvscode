@@ -1,6 +1,6 @@
 pkgbase = shuvscode-bin
 	pkgdesc = shuvscode: an opinionated VS Code/VSCodium fork (bundles Electron)
-	pkgver = 1.119.1.shuv1
+	pkgver = 1.120.03314.shuv1
 	pkgrel = 1
 	url = https://github.com/shuv1337/shuvscode
 	arch = x86_64
@@ -21,16 +21,16 @@ pkgbase = shuvscode-bin
 	depends = pango
 	optdepends = gnome-keyring: GNOME keyring/secrets support
 	optdepends = kwallet: KDE wallet/secrets support
-	provides = shuvscode=1.119.1.shuv1
+	provides = shuvscode=1.120.03314.shuv1
 	conflicts = shuvscode
 	conflicts = shuvscode-git
 	conflicts = shuvscode-electron
 	options = !strip
 	options = !debug
-	source = shuvscode-bin-1.119.1.shuv1.tar.gz::https://github.com/shuv1337/shuvscode/releases/download/v1.119.1.shuv1/shuvscode-1.119.1-linux-x64.tar.gz
+	source = shuvscode-bin-1.120.03314.shuv1.tar.gz::https://github.com/shuv1337/shuvscode/releases/download/v1.120.03314.shuv1/shuvscode-linux-x64.tar.gz
 	source = shuvscode.sh
 	source = shuvscode.desktop
-	sha256sums = d41d3959e17cd20533831963855813d92177fac99a0c833554cc222e27f6b74c
+	sha256sums = e2907c47b21b15d75bf89eafeb8746d85f28d9ac0ff91f5920d5d909c0809ca7
 	sha256sums = 27281b54125f31c0f89fd5a68b686b9ef10b21f1e8bba1f6eb71e89a43779419
 	sha256sums = 07d8fc26dba7ef143732980b1bdc497f66815570e16c83a20009524f477ae697
 
