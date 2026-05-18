@@ -7,8 +7,8 @@ are resolved; next priorities are per-project Zellij tabs and Canvas Phase B.
 
 ## Current status
 
-**Running binary:** `v1.120.03314` · commit `641eaa7`
-**Branch:** `shuvscode-main` · latest tag `v1.120.03263.shuv1` (39 unreleased commits)
+**Running binary:** `v1.120.03315` · commit `baee80b`
+**Branch:** `shuvscode-main` · latest tag `v1.120.03315.shuv1` (0 unreleased commits beyond the AUR bump)
 **Unmerged branches:** `pr-2-review`
 
 Done in the last 2 weeks:
@@ -26,10 +26,19 @@ Done in the last 2 weeks:
   `github-authentication`'s flow list. Strict `findMissingScopes`.
 - **Patch 33 (`641eaa7`)** — restores `workbench.getCodeExchangeProxyEndpoints`,
   unbreaking the entire GitHub login flow. See "Resolved bugs" below.
+- **GitHub view colocation (`a945603`)** — shuvscode-gh now moves PR / Issues /
+  Notifications views into `workbench.view.scm` on first activation per profile
+  (one-shot, persists a flag in globalState). Right secondary sidebar stacks:
+  Repos → Changes → Graph → Pull Requests → Issues → Notifications.
+  Opt-out via `shuvscode.gh.colocateWithSourceControl: false`. Reset via the
+  `shuvscode.gh.resetColocation` command.
+- **Releases shipped:** `v1.120.03314.shuv1` (auth fix) and `v1.120.03315.shuv1`
+  (colocation), both with matching AUR PKGBUILD bumps (initial AUR publish was
+  `v1.120.03314.shuv1-1`; `shuvscode-bin` lives at
+  https://aur.archlinux.org/packages/shuvscode-bin).
 - Reverted: dense panel-split patches 30/31, Ember UI identity.
 
-Not done: per-project Zellij tabs beyond the managed session; Canvas Phase B+;
-a `v1.120.03314.shuv1` AUR cut.
+Not done: per-project Zellij tabs beyond the managed session; Canvas Phase B+.
 
 ## Resolved bugs (this session)
 
@@ -99,20 +108,20 @@ a `v1.120.03314.shuv1` AUR cut.
 
 ## Next steps
 
-1. **Cut `v1.120.03314.shuv1`** — `gh release create v1.120.03314.shuv1 \
-   shuvscode-linux-x64.tar.gz shuvscode-linux-x64.tar.gz.sha256`.
-   Need to tar up the binary first (no release script exists yet; consider
-   writing one).
-2. **Bump AUR PKGBUILD** in `packaging/aur/shuvscode-bin/PKGBUILD`. Note the
-   source URL currently references `shuvscode-1.120.0-linux-x64.tar.gz` but
-   releases use the unversioned `shuvscode-linux-x64.tar.gz` filename — fix
-   the URL while bumping.
-3. Continue Zellij per the plan: per-project tab create + focus behind
+1. Continue Zellij per the plan: per-project tab create + focus behind
    `shuvscode.projects.zellij.enabled`; expand `zellij.test.js` to cover
    owner-marker, stale-heartbeat, and foreign-session contracts.
-4. Refactor `shuvscode-projects/extension.js`: split `WindowRegistry` and
+2. Refactor `shuvscode-projects/extension.js`: split `WindowRegistry` and
    `ProjectStore` out before Zellij phase 2 lands.
-5. Canvas Phase B per `PLAN-canvas-ui.md`.
+3. Canvas Phase B per `PLAN-canvas-ui.md`.
+4. **Write a release script.** Right now release-cutting is manual: build,
+   `tar czf /tmp/shuvscode-linux-x64.tar.gz shuvscode-linux-x64`,
+   `sha256sum > .sha256`, `git tag -a vX.Y.shuvN`, `git push --tags`,
+   `gh release create`, then update `packaging/aur/shuvscode-bin/PKGBUILD`
+   (bump pkgver + sha256), regenerate `.SRCINFO` via `makepkg --printsrcinfo`,
+   copy into `/tmp/shuvscode-bin-aur` (AUR clone at
+   `ssh://aur@aur.archlinux.org/shuvscode-bin.git`), commit + push.
+   ~10 manual steps; would be one script.
 
 ## Validation (regression smoke)
 
@@ -175,15 +184,19 @@ git diff --no-color -- src/vs/workbench/workbench.common.main.ts > /tmp/wcm.diff
   rather than `src/stable/`. If the upstream rebase touches that dir, expect
   conflicts. Consider relocating to `src/stable/src/vs/workbench/contrib/...`
   next time patches are reshuffled.
-- AUR PKGBUILD source URL is stale (`shuvscode-1.120.0-linux-x64.tar.gz` vs
-  actual asset name `shuvscode-linux-x64.tar.gz`). Fix during the next bump.
+- ~~AUR PKGBUILD source URL is stale~~ — fixed in `8cc1913`.
+- Colocation move uses `vscode.moveViews` which appends to the destination
+  container. If upstream changes the ordering semantics or someone adds new
+  views to `workbench.view.scm`, the GitHub views may end up in a different
+  vertical position. Currently they land after Repos / Changes / Graph which
+  is what we want.
 
 ## Resume prompt
 
-> Pick up shuvscode at commit `641eaa7`. GitHub auth bugs resolved (patch 33
-> restored `workbench.getCodeExchangeProxyEndpoints`); PRs and Issues render
-> correctly. Next: cut `v1.120.03314.shuv1` (tar, gh release, sha256), bump
-> AUR PKGBUILD (note the stale source URL), then start per-project Zellij
-> tabs per `PLAN-zellij-first-class-project-integration.md`. See the visual
-> recap at https://files.shuv.me/shuvscode-recap-2026-05-17.html for the
-> two-week context.
+> Pick up shuvscode at commit `baee80b`. GitHub auth bugs resolved (patch 33),
+> PR/Issues/Notifications colocate with Source Control in the secondary sidebar
+> (commit `a945603`), shipped as `v1.120.03315.shuv1` on GitHub + AUR. Next:
+> per-project Zellij tabs per `PLAN-zellij-first-class-project-integration.md`,
+> or the `shuvscode-projects/extension.js` refactor (1,252-LoC monolith) before
+> phase 2 lands. See the visual recap at
+> https://files.shuv.me/shuvscode-recap-2026-05-17.html for the two-week context.
