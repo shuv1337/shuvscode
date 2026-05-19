@@ -12,7 +12,7 @@
 ## Current status
 
 - Branch: `shuvscode-main`
-- Remote: pushed through `62267bf feat(shuvscode-theme): tune amber selection language`
+- Remote: pushed through `f74590a docs: refresh shuvscode release evidence handoff`
 - Current built app:
   - `./shuvscode-linux-x64/bin/shuvscode --version`
   - `1.120.03329`
@@ -112,4 +112,5 @@ No Chrome plugin, in-app Browser plugin, `agent-browser connect`, or separate Ch
 - Parent issues were intentionally not closed because #16 explicitly forbids closing parent issues without maintainer approval.
 - If the maintainer asks for release actions, start by refreshing `gh issue list`, `git status`, `git log --oneline -12`, and `./shuvscode-linux-x64/bin/shuvscode --version`.
 - Keep using direct Electron CDP targeting with `agent-browser --session <fresh-name> --cdp <port> ...`.
+- `AGENTS.md` now explicitly calls out the shuvscode-specific browser-control rule: control the Electron workbench through its own CDP port and stop immediately if automation lands in standalone Chrome or `about:blank`.
 - Old issue comments mention earlier tty/CDP blockers; those are stale. Live desktop CDP validation succeeded in this pass.
