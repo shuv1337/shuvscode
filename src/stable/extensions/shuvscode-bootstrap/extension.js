@@ -246,8 +246,12 @@ async function activate(ctx) {
     return { whenScmReady, getScmReadyState };
   }
 
-  if (layoutResult.decision.shouldApply || !ctx.globalState.get(STATE_KEYS.canvasScmOpened)) {
+  if (layoutResult.decision.shouldApply) {
     await applyOpinionatedLayout(ctx, layoutResult.snapshot, { deferMs: 2000 });
+  } else if (layoutResult.snapshot.canvasScmOpened === true) {
+    await setScmReady({ ready: true, reason: `layout skipped: ${layoutResult.decision.reason}` });
+  } else {
+    await setScmReady({ ready: false, reason: `layout skipped: ${layoutResult.decision.reason}`, final: true });
   }
 
   if (ctx.globalState.get(STATE_KEYS.bootstrapped)) {
