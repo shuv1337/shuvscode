@@ -1,4 +1,4 @@
-const CURRENT_LAYOUT_VERSION = 2;
+const CURRENT_LAYOUT_VERSION = 4;
 
 const STATE_KEYS = {
   appliedVersion: 'shuvscode.layout.appliedVersion',
@@ -14,7 +14,6 @@ const STATUS = {
   failed: 'failed',
   skippedDisabled: 'skipped:disabled',
   skippedUnlocked: 'skipped:unlocked',
-  skippedExistingProfile: 'skipped:existing-profile',
   skippedCurrent: 'skipped:current'
 };
 
@@ -75,11 +74,15 @@ function decideLayout(snapshot, { force = false } = {}) {
   }
 
   if (appliedVersion === undefined) {
-    return { shouldApply: false, status: STATUS.skippedExistingProfile, reason: 'existing profile predates layout orchestrator' };
+    return { shouldApply: true, status: STATUS.ok, reason: 'existing profile adopted by layout orchestrator' };
   }
 
   if (snapshot.targetVersion > appliedVersion) {
     return { shouldApply: true, status: STATUS.ok, reason: `layout version ${snapshot.targetVersion} supersedes ${appliedVersion}` };
+  }
+
+  if (snapshot.reassertOnStartup === true) {
+    return { shouldApply: true, status: STATUS.ok, reason: `layout version ${appliedVersion} reasserted on startup` };
   }
 
   return { shouldApply: false, status: STATUS.skippedCurrent, reason: `layout version ${appliedVersion} is current` };

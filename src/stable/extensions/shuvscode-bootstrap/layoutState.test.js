@@ -23,10 +23,13 @@ test('fresh profile is eligible for layout without legacy sentinels', () => {
   });
 });
 
-test('existing profile is skipped when legacy bootstrap sentinel exists', () => {
+test('existing profile is adopted when legacy bootstrap sentinel exists', () => {
   const state = snapshot({ [STATE_KEYS.bootstrapped]: true });
   assert.equal(isFreshProfile(state), false);
-  assert.equal(decideLayout(state).status, STATUS.skippedExistingProfile);
+  const decision = decideLayout(state);
+  assert.equal(decision.shouldApply, true);
+  assert.equal(decision.status, STATUS.ok);
+  assert.equal(decision.reason, 'existing profile adopted by layout orchestrator');
 });
 
 test('unlocked profile skips automatic layout', () => {
@@ -41,8 +44,19 @@ test('version bump is eligible when target exceeds applied version', () => {
   assert.equal(decision.status, STATUS.ok);
 });
 
-test('current numeric version is skipped without string sentinels', () => {
-  const state = snapshot({ [STATE_KEYS.appliedVersion]: 2 }, { targetVersion: 2 });
+test('current numeric version is reasserted by default', () => {
+  const state = snapshot({ [STATE_KEYS.appliedVersion]: 4 }, { targetVersion: 4 });
+  const decision = decideLayout(state);
+  assert.equal(decision.shouldApply, true);
+  assert.equal(decision.status, STATUS.ok);
+  assert.equal(decision.reason, 'layout version 4 reasserted on startup');
+});
+
+test('current numeric version is skipped when startup reassertion is disabled', () => {
+  const state = snapshot(
+    { [STATE_KEYS.appliedVersion]: 4 },
+    { targetVersion: 4, reassertOnStartup: false }
+  );
   assert.equal(decideLayout(state).status, STATUS.skippedCurrent);
 });
 

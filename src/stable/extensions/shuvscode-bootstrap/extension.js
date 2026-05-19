@@ -6,6 +6,12 @@ const {
   decideLayout,
   readLayoutSnapshot
 } = require('./layoutState');
+const {
+  LAYOUT_MODES,
+  chooseLayoutMode,
+  isHunkTerminalName,
+  layoutForMode
+} = require('./responsiveLayout');
 
 const EXTENSIONS = [];
 const CTX_SCM_READY = 'shuvscode.layout.scmReady';
@@ -13,6 +19,8 @@ const SCM_READY_COMMAND = 'shuvscode.layout.whenScmReady';
 let output;
 let scmReadyState = { ready: false, reason: 'not-started' };
 let scmReadyWaiters = [];
+let responsiveLayoutMode;
+let responsiveLayoutTimer;
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -99,38 +107,132 @@ function getScmReadyState() {
   return scmReadyState;
 }
 
-async function runLayoutCommand(command, snapshot, { fallback } = {}) {
+async function runWorkbenchCommand(command, snapshot, { args = [], fallback } = {}) {
   try {
-    await vscode.commands.executeCommand(command);
+    await vscode.commands.executeCommand(command, ...args);
     log(`editor grid: ran ${command}`, snapshot.debugLogging);
     return { command, ok: true };
   } catch (e) {
     const message = e && e.message || String(e);
     log(`editor grid: ${command} failed: ${message}`, snapshot.debugLogging);
     if (fallback) {
-      return runLayoutCommand(fallback, snapshot);
+      return runWorkbenchCommand(fallback, snapshot);
     }
     return { command, ok: false, error: message };
   }
 }
 
+async function showPrimaryTerminal(snapshot) {
+  const terminal = vscode.window.activeTerminal ||
+    vscode.window.terminals.find(candidate => !isHunkTerminalName(candidate.name)) ||
+    vscode.window.terminals[0] ||
+    vscode.window.createTerminal({
+      name: 'shuvscode',
+      location: vscode.TerminalLocation.Editor
+    });
+  terminal.show();
+  log(`terminal: showed ${terminal.name || '<unnamed>'}`, snapshot.debugLogging);
+  return terminal;
+}
+
 async function applyEditorGrid(snapshot) {
   const results = [];
-  results.push(await runLayoutCommand('workbench.action.editorLayoutTwoRowsRight', snapshot));
-  results.push(await runLayoutCommand('workbench.action.focusLastEditorGroup', snapshot));
-  results.push(await runLayoutCommand('workbench.action.createTerminalEditorSameGroup', snapshot, {
-    fallback: 'workbench.action.createTerminalEditor'
+  results.push(await runWorkbenchCommand('vscode.setEditorLayout', snapshot, {
+    args: [layoutForMode(LAYOUT_MODES.terminalPrimary)],
+    fallback: 'workbench.action.editorLayoutSingle'
   }));
-  results.push(await runLayoutCommand('workbench.action.lockEditorGroup', snapshot));
-  results.push(await runLayoutCommand('workbench.action.focusFirstEditorGroup', snapshot));
+  await showPrimaryTerminal(snapshot);
+  results.push(await runWorkbenchCommand('workbench.action.lockEditorGroup', snapshot));
 
   const failures = results.filter(result => !result.ok);
   if (failures.length > 0) {
     log(`editor grid: completed with ${failures.length} command failure(s)`, snapshot.debugLogging);
   } else {
-    log('editor grid: applied terminal-in-editor cockpit layout', snapshot.debugLogging);
+    responsiveLayoutMode = LAYOUT_MODES.terminalPrimary;
+    log('editor grid: applied terminal-first single editor layout', snapshot.debugLogging);
   }
   return { ok: failures.length === 0, results };
+}
+
+function visibleTextEditorCount() {
+  return vscode.window.visibleTextEditors
+    .filter(editor => editor.document?.uri?.scheme !== 'output')
+    .length;
+}
+
+function hunkTerminalCount() {
+  return vscode.window.terminals.filter(terminal => isHunkTerminalName(terminal.name)).length;
+}
+
+function responsiveLayoutEnabled(ctx) {
+  const snapshot = snapshotFor(ctx);
+  return snapshot.enabled !== false && snapshot.unlocked !== true;
+}
+
+async function applyResponsiveEditorLayout(ctx, reason) {
+  if (!responsiveLayoutEnabled(ctx)) {
+    log(`responsive layout: skipped reason=${reason} profile unlocked or disabled`);
+    return;
+  }
+
+  const snapshot = snapshotFor(ctx);
+  const mode = chooseLayoutMode({
+    visibleTextEditorCount: visibleTextEditorCount(),
+    hunkTerminalCount: hunkTerminalCount()
+  });
+
+  if (mode === responsiveLayoutMode) {
+    log(`responsive layout: unchanged mode=${mode} reason=${reason}`, snapshot.debugLogging);
+    return;
+  }
+
+  const result = await runWorkbenchCommand('vscode.setEditorLayout', snapshot, {
+    args: [layoutForMode(mode)]
+  });
+  if (!result.ok) {
+    return;
+  }
+
+  responsiveLayoutMode = mode;
+  log(`responsive layout: mode=${mode} reason=${reason}`, snapshot.debugLogging);
+
+  if (mode === LAYOUT_MODES.terminalPrimary) {
+    await showPrimaryTerminal(snapshot);
+    await runWorkbenchCommand('workbench.action.lockEditorGroup', snapshot);
+  }
+}
+
+function scheduleResponsiveLayout(ctx, reason, delayMs = 250) {
+  if (responsiveLayoutTimer) {
+    clearTimeout(responsiveLayoutTimer);
+  }
+  responsiveLayoutTimer = setTimeout(() => {
+    responsiveLayoutTimer = undefined;
+    applyResponsiveEditorLayout(ctx, reason).catch(e => {
+      log(`responsive layout: failed reason=${reason} error=${e && e.message || e}`);
+    });
+  }, delayMs);
+}
+
+function startResponsiveLayout(ctx) {
+  ctx.subscriptions.push(
+    vscode.window.onDidChangeVisibleTextEditors(() => scheduleResponsiveLayout(ctx, 'visible-text-editors-changed')),
+    vscode.window.onDidOpenTerminal(terminal => {
+      scheduleResponsiveLayout(
+        ctx,
+        isHunkTerminalName(terminal.name) ? 'hunk-terminal-opened' : 'terminal-opened',
+        500
+      );
+    }),
+    vscode.window.onDidCloseTerminal(terminal => {
+      scheduleResponsiveLayout(
+        ctx,
+        isHunkTerminalName(terminal.name) ? 'hunk-terminal-closed' : 'terminal-closed',
+        500
+      );
+    })
+  );
+  scheduleResponsiveLayout(ctx, 'startup', 750);
 }
 
 async function applyOpinionatedLayout(ctx, snapshot, { deferMs = 0 } = {}) {
@@ -169,12 +271,6 @@ async function evaluateLayout(ctx, { force = false } = {}) {
   const decision = decideLayout(snapshot, { force });
   await updateLastApply(ctx, decision.status);
   log(`layout decision: status=${decision.status} shouldApply=${decision.shouldApply} reason=${decision.reason}`, snapshot.debugLogging);
-  if (
-    decision.status === 'skipped:existing-profile' &&
-    snapshot.lastApplyStatus !== 'skipped:existing-profile'
-  ) {
-    vscode.window.showInformationMessage('shuvscode: existing profile layout preserved. Run "shuvscode: Reset Opinionated Layout" to opt in.');
-  }
   if (decision.status === 'failed') {
     vscode.window.showWarningMessage(`shuvscode layout decision failed: ${decision.reason}`);
   }
@@ -253,6 +349,7 @@ async function activate(ctx) {
   } else {
     await setScmReady({ ready: false, reason: `layout skipped: ${layoutResult.decision.reason}`, final: true });
   }
+  startResponsiveLayout(ctx);
 
   if (ctx.globalState.get(STATE_KEYS.bootstrapped)) {
     return { whenScmReady, getScmReadyState };
@@ -279,6 +376,10 @@ async function activate(ctx) {
 }
 
 function deactivate() {
+  if (responsiveLayoutTimer) {
+    clearTimeout(responsiveLayoutTimer);
+    responsiveLayoutTimer = undefined;
+  }
   if (output) {
     output.dispose();
     output = undefined;
