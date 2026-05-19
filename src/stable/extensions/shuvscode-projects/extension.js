@@ -4,7 +4,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const vscode = require('vscode');
-const { ZellijManager, ZellijError } = require('./zellij');
+const { ZellijManager, ZellijError, terminalEnvOverrides } = require('./zellij');
 
 const VIEW_ID = 'shuvscodeProjects.projects';
 const PROJECTS_FILE = 'projects.json';
@@ -874,16 +874,17 @@ async function openManagedZellijTerminal(manager, project, options = {}) {
   const existing = vscode.window.terminals.find(t => t.name === name);
   if (existing) {
     existing.show(true);
-    return existing;
+    return { terminal: existing, created: false };
   }
 
   const terminal = vscode.window.createTerminal({
     name,
-    cwd: project && project.rootPath ? project.rootPath : os.homedir()
+    cwd: project && project.rootPath ? project.rootPath : os.homedir(),
+    env: terminalEnvOverrides()
   });
   terminal.show(true);
   terminal.sendText(manager.attachCommand(), true);
-  return terminal;
+  return { terminal, created: true };
 }
 
 async function openActiveProjectAsWorkspace(activeProjects) {
@@ -937,8 +938,12 @@ async function fastSwitchProject(store, provider, activeProjects, manager, statu
     await store.remember(project);
     await ensureManagedZellijWithPrompt(manager);
     const { tab, tabName } = await manager.ensureProjectTab(project);
-    await openManagedZellijTerminal(manager, project, { skipEnsure: true });
-    await delay(500);
+    const { created } = await openManagedZellijTerminal(manager, project, { skipEnsure: true });
+    // Only wait for `zellij attach` to settle when we just dispatched it.
+    // Warm switches (terminal already attached) can focus the tab immediately.
+    if (created) {
+      await delay(500);
+    }
     await manager.focusTab(tab, tabName);
     await activeProjects.write(project);
     await provider.refresh();
@@ -1020,7 +1025,8 @@ async function openMultiplexerTerminal(project) {
 
   const terminal = vscode.window.createTerminal({
     name,
-    cwd: target.rootPath
+    cwd: target.rootPath,
+    env: terminalEnvOverrides()
   });
   terminal.show(true);
   // Send the launch command; the multiplexer's own attach/create-or-attach

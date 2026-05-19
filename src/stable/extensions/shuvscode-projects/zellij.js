@@ -8,6 +8,8 @@ const OWNER = 'shuvscode-projects';
 const DEFAULT_SESSION_NAME = 'shuvscode-managed';
 const HUB_TAB_NAME = 'hub';
 const DEFAULT_TIMEOUT_MS = 8000;
+const DEFAULT_TERM = 'xterm-256color';
+const DEFAULT_COLORTERM = 'truecolor';
 
 class ZellijError extends Error {
   constructor(message, code, details = {}) {
@@ -78,6 +80,32 @@ function shellQuote(value) {
 
 function zellijShellCommand(executablePath, args) {
   return [executablePath, ...args].map(shellQuote).join(' ');
+}
+
+function hasUsableTerm(value) {
+  return !!value && value !== 'dumb';
+}
+
+function terminalEnvForProcess(baseEnv = process.env) {
+  const env = { ...(baseEnv || {}) };
+  if (!hasUsableTerm(env.TERM)) {
+    env.TERM = DEFAULT_TERM;
+  }
+  if (!env.COLORTERM) {
+    env.COLORTERM = DEFAULT_COLORTERM;
+  }
+  return env;
+}
+
+function terminalEnvOverrides(baseEnv = process.env) {
+  const env = {};
+  if (!hasUsableTerm(baseEnv && baseEnv.TERM)) {
+    env.TERM = DEFAULT_TERM;
+  }
+  if (!(baseEnv && baseEnv.COLORTERM)) {
+    env.COLORTERM = DEFAULT_COLORTERM;
+  }
+  return env;
 }
 
 async function readJson(filePath, fallback) {
@@ -152,6 +180,7 @@ class ZellijManager {
     return new Promise((resolve, reject) => {
       const child = execFile(executable, args, {
         cwd: options.cwd,
+        env: terminalEnvForProcess(options.env || process.env),
         timeout: options.timeout || DEFAULT_TIMEOUT_MS,
         encoding: 'utf8',
         maxBuffer: 1024 * 1024
@@ -349,5 +378,7 @@ module.exports = {
   projectTabName,
   shellQuote,
   slugifyName,
-  substituteProjectTokens
+  substituteProjectTokens,
+  terminalEnvForProcess,
+  terminalEnvOverrides
 };

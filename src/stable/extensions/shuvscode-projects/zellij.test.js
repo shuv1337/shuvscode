@@ -10,6 +10,8 @@ const {
   shellQuote,
   slugifyName,
   substituteProjectTokens,
+  terminalEnvForProcess,
+  terminalEnvOverrides,
   ZellijManager
 } = require('./zellij');
 
@@ -66,4 +68,30 @@ test('ZellijManager merges direct config options with dynamic config', () => {
 
 test('shellQuote handles paths and quotes for terminal attach command text', () => {
   assert.equal(shellQuote("/tmp/it's here"), "'/tmp/it'\\''s here'");
+});
+
+test('terminal env helpers provide interactive defaults for GUI-launched shuvscode', () => {
+  const processEnv = terminalEnvForProcess({ PATH: '/usr/bin' });
+  assert.equal(processEnv.PATH, '/usr/bin');
+  assert.equal(processEnv.TERM, 'xterm-256color');
+  assert.equal(processEnv.COLORTERM, 'truecolor');
+
+  assert.deepEqual(terminalEnvOverrides({ TERM: 'dumb' }), {
+    TERM: 'xterm-256color',
+    COLORTERM: 'truecolor'
+  });
+  assert.deepEqual(terminalEnvOverrides({ TERM: 'xterm-ghostty', COLORTERM: 'truecolor' }), {});
+});
+
+test('ZellijManager.run supplies TERM to commands launched from GUI-like env', async () => {
+  const manager = new ZellijManager({
+    storagePath: '/tmp/shuvscode-zellij-test',
+    executablePath: process.execPath
+  });
+  const result = await manager.run([
+    '-e',
+    'process.stdout.write(`${process.env.TERM}:${process.env.COLORTERM}`)'
+  ], { env: { PATH: process.env.PATH } });
+
+  assert.equal(result.stdout, 'xterm-256color:truecolor');
 });
