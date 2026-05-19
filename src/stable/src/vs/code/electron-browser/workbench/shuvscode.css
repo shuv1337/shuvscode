@@ -10,6 +10,9 @@
   --canvas-accent-strong: #FFC85F;
   --canvas-accent-soft: rgba(243, 176, 66, 0.14);
   --canvas-accent-medium: rgba(243, 176, 66, 0.24);
+  --canvas-selection-hover: rgba(243, 176, 66, 0.10);
+  --canvas-selection-active: rgba(243, 176, 66, 0.22);
+  --canvas-selection-focus: rgba(243, 176, 66, 0.30);
   --canvas-text: #E6EAF2;
   --canvas-text-dim: #8B95A9;
   --canvas-radius: 10px;
@@ -312,15 +315,48 @@
   border-radius: 4px;
   margin: 0 4px;
   width: calc(100% - 8px) !important;
+  transition: background-color .12s ease-out, box-shadow .12s ease-out, color .12s ease-out;
 }
 
-.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row:hover {
-  background: var(--canvas-accent-soft) !important;
+.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row:hover,
+.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row.highlighted {
+  background: var(--canvas-selection-hover) !important;
 }
 
 .monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row.selected,
-.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row.focused {
-  background: rgba(243, 176, 66, 0.08) !important;
+.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row.focused,
+.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row.selected.focused {
+  background: linear-gradient(90deg, var(--canvas-selection-focus), var(--canvas-selection-active)) !important;
+  color: var(--canvas-text) !important;
+  box-shadow:
+    inset 3px 0 0 var(--canvas-accent),
+    inset 0 0 0 1px rgba(243, 176, 66, .18);
+}
+
+.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row.selected:not(.focused) {
+  background: var(--canvas-selection-active) !important;
+  box-shadow: inset 3px 0 0 rgba(243, 176, 66, .82);
+}
+
+.monaco-workbench.shuvscode-canvas .quick-input-widget .monaco-list .monaco-list-row.focused,
+.monaco-workbench.shuvscode-canvas .quick-input-widget .monaco-list .monaco-list-row.selected {
+  background: linear-gradient(90deg, rgba(243, 176, 66, .28), rgba(243, 176, 66, .18)) !important;
+  box-shadow:
+    inset 3px 0 0 var(--canvas-accent),
+    inset 0 0 0 1px rgba(243, 176, 66, .16);
+}
+
+.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row .codicon-folder-active,
+.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row .codicon-star-full,
+.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row .codicon-circle-large-filled,
+.monaco-workbench.shuvscode-canvas .monaco-list .monaco-list-row .codicon-terminal {
+  color: var(--canvas-accent-strong) !important;
+}
+
+.monaco-workbench.shuvscode-canvas .part.sidebar > .content .composite.title .composite-bar .monaco-action-bar .action-item.checked .active-item-indicator::before,
+.monaco-workbench.shuvscode-canvas .part.panel > .content .composite.title .composite-bar .monaco-action-bar .action-item.checked .active-item-indicator::before,
+.monaco-workbench.shuvscode-canvas .part.auxiliarybar > .content .composite.title .composite-bar .monaco-action-bar .action-item.checked .active-item-indicator::before {
+  background-color: var(--canvas-accent) !important;
 }
 
 /* Menus */
