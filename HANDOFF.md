@@ -1,63 +1,115 @@
 # HANDOFF
 
 ## Objective
-- Continue shuvscode’s next release train for the three open parent issues: #5 opinionated layout, #3 amber accent balance, and #4 gh-dash integration.
-- Use the newly created child issues as independently grabbable AFK work slices.
+
+- Continue shuvscode's open-issues release train for:
+  - #5 opinionated layout
+  - #3 amber accent balance
+  - #4 gh-dash integration
+- Child implementation issues #7-#16 have been worked through from live repo/GitHub state.
+- Do not tag a release, update AUR metadata, or close parent issues unless the maintainer explicitly asks for those release actions.
 
 ## Current status
-- Current local build is already present: `1.120.03315`, commit `8e1621a22fcc931a8a0bb2ac9f2d66e29c0167bd`, `x64`.
-- Global binary link is current: `~/.local/bin/shuvscode -> /home/shuv/repos/shuvscode/shuvscode-linux-x64/bin/shuvscode`.
-- Walker/GNOME launcher is current: `~/.local/share/applications/shuvscode.desktop` runs `/home/shuv/repos/shuvscode/shuvscode-linux-x64/bin/shuvscode %F`.
-- `./scripts/install-dev-launchers.sh` was rerun successfully; no rebuild was needed because there were no tracked source changes.
-- `PLAN-open-issues-end-to-end.md` is untracked and intentionally treated as planning context, not implementation drift.
-- Child GitHub issues #7-#16 were created with labels `enhancement` and `help wanted`; parent issues #3, #4, and #5 were only referenced, not modified or closed.
 
-## Key context
-- Implementation order from the plan is #5 -> #3 -> #4, then release evidence/prep.
-- Target release train is `v1.120.03316.shuv1`; do not tag, push AUR metadata, or close parent issues unless explicitly asked.
-- Tracked overlays live under `src/stable/...`; generated `vscode/...` and `shuvscode-linux-x64/...` should be refreshed through `./scripts/prepare-shuvscode-tree.sh` and `./scripts/build-shuvscode.sh`.
-- Long builds should use `setsid nohup ./scripts/build-shuvscode.sh > /tmp/<log>.log 2>&1 < /dev/null & disown` to survive the shell wrapper.
-- Triage defaults used here: AFK-ready child issues are `enhancement` + `help wanted`; no HITL slices were created because product decisions are locked in the plan.
+- Branch: `shuvscode-main`
+- Remote: pushed through `62267bf feat(shuvscode-theme): tune amber selection language`
+- Current built app:
+  - `./shuvscode-linux-x64/bin/shuvscode --version`
+  - `1.120.03329`
+  - `668afbf0987de9c4267441babd0c4440948424ec`
+  - `x64`
+- Dev launchers were refreshed by the build:
+  - `~/.local/bin/shuvscode -> /home/shuv/repos/shuvscode/shuvscode-linux-x64/bin/shuvscode`
+  - `~/.local/share/applications/shuvscode.desktop` points at the repo dev build.
+- Release-only actions were intentionally left untouched:
+  - no tag created
+  - no AUR metadata updated
+  - parent issues #3, #4, #5, and #6 left open
 
-## Important files
-- `PLAN-open-issues-end-to-end.md` - source plan and locked decisions for #3/#4/#5 breakdown.
-- `scripts/build-shuvscode.sh` - builds and then refreshes local CLI/desktop launchers.
-- `scripts/install-dev-launchers.sh` - idempotently points `~/.local/bin/shuvscode` and Walker desktop entry at the dev build.
-- `packaging/dev-launcher/shuvscode.desktop` - template copied to the user-local desktop entry.
-- `src/stable/extensions/shuvscode-bootstrap/` - planned owner for layout state/orchestrator work.
-- `src/stable/extensions/shuvscode-projects/` - Projects view and future Explorer placement changes.
-- `src/stable/extensions/shuvscode-gh/` - GitHub colocation and planned gh-dash integration.
-- `src/stable/src/vs/code/electron-browser/workbench/shuvscode.css` and Night Owl theme JSON files - amber accent work.
+## Completed child issues
 
-## External references
-- #7 Layout state model and commands: https://github.com/shuv1337/shuvscode/issues/7
-- #8 Projects in Explorer: https://github.com/shuv1337/shuvscode/issues/8
-- #9 SCM readiness + GitHub colocation: https://github.com/shuv1337/shuvscode/issues/9
-- #10 Editor grid + terminal pane: https://github.com/shuv1337/shuvscode/issues/10
-- #11 Fresh-profile/reset/unlock proof: https://github.com/shuv1337/shuvscode/issues/11
-- #12 Amber tuning: https://github.com/shuv1337/shuvscode/issues/12
-- #13 gh-dash detection/settings: https://github.com/shuv1337/shuvscode/issues/13
-- #14 gh-dash terminal launch: https://github.com/shuv1337/shuvscode/issues/14
-- #15 gh-dash onboarding/docs: https://github.com/shuv1337/shuvscode/issues/15
-- #16 Build evidence/release prep: https://github.com/shuv1337/shuvscode/issues/16
-
-## Next steps
-1. Start with #7, then #8/#9/#10 can proceed in parallel once #7 lands.
-2. Complete #11 as the layout proof/hardening gate before amber tuning #12.
-3. Complete gh-dash slices #13 -> #14 -> #15 after #9, then #16 for cross-parent validation and evidence.
+- #7 Layout state model and commands: `50ab453`
+- #8 Projects in Explorer: `ca098f5`
+- #9 SCM readiness + GitHub colocation: `943e5b7`
+- #10 Editor grid + terminal-in-editor function pane:
+  - `f9ae06e`
+  - `f6e1946`
+  - `9623a94`
+- #11 Fresh-profile/reset/unlock proof:
+  - `c706ff2`
+- #12 Amber tuning:
+  - `62267bf`
+- #13 gh-dash detection/settings:
+  - `ceb35fa`
+- #14 gh-dash terminal launch/reuse:
+  - `72be50f`
+- #15 gh-dash onboarding/docs:
+  - `69a4431`
+- #16 release evidence:
+  - this handoff is the release-train recap artifact
 
 ## Validation
-- Ran `./shuvscode-linux-x64/bin/shuvscode --version` and `shuvscode --version`; both reported `1.120.03315` / `8e1621a22fcc931a8a0bb2ac9f2d66e29c0167bd` / `x64`.
-- Confirmed `readlink -f ~/.local/bin/shuvscode` resolves to the repo dev build.
-- Confirmed user-local desktop entry points at the repo dev build.
-- Ran `./scripts/install-dev-launchers.sh`; it refreshed the symlink and desktop entry successfully.
-- No tests or builds were run after issue creation because no source implementation changed.
 
-## Risks / open questions
-- Parent issue #5 is the riskiest area: Projects-in-Explorer ordering and terminal-in-editor grid behavior may require narrow core patches if public commands are nondeterministic.
-- Fresh-profile detection must stay conservative to avoid clobbering existing users.
-- `vscode.moveViews` remains acceptable for existing one-shot GitHub colocation, but should not become the source of default SCM placement.
-- `gh-dash` config is user-owned; do not overwrite `.gh-dash.yml` or global config.
+Source gates run after the final #12/#16 state:
 
-## Resume prompt
-- Pick up at child issue #7 and implement the layout state/commands foundation from `PLAN-open-issues-end-to-end.md`. Keep changes in tracked overlays, validate with targeted `node --check`/`jq`, and only run the long build with `setsid nohup` when source-complete.
+- `node --check src/stable/extensions/shuvscode-bootstrap/extension.js`
+- `node --check src/stable/extensions/shuvscode-bootstrap/layoutState.js`
+- `node --test src/stable/extensions/shuvscode-bootstrap/layoutState.test.js` - 7 passing
+- `node --check src/stable/extensions/shuvscode-gh/extension.js`
+- `jq . src/stable/extensions/shuvscode-gh/package.json >/dev/null`
+- `node --check src/stable/extensions/shuvscode-projects/extension.js`
+- `node --check src/stable/extensions/shuvscode-projects/zellij.js`
+- `node --test src/stable/extensions/shuvscode-projects/zellij.test.js` - 7 passing
+- `jq . src/stable/extensions/shuvscode-projects/package.json >/dev/null`
+- `jq . src/stable/extensions/shuvscode-night-owl/themes/night-owl-color-theme.json >/dev/null`
+- `jq . src/stable/extensions/shuvscode-night-owl/themes/night-owl-color-theme-noitalic.json >/dev/null`
+- `jq . src/stable/extensions/shuvscode-defaults/package.json >/dev/null`
+- `jq . shuvscode.product.json >/dev/null`
+- `jq . product.json >/dev/null`
+- `git diff --check`
+- `./scripts/build-shuvscode.sh` passed; latest log: `/tmp/shuvscode-issue12-build.log`
+
+## Built-app evidence
+
+All Electron smokes used the built shuvscode app directly with `agent-browser --session ... --cdp <port>`.
+No Chrome plugin, in-app Browser plugin, `agent-browser connect`, or separate Chrome profile was used.
+
+- Non-git fresh layout:
+  - `/tmp/shuvscode-issue11-nongit-fresh.png`
+  - showed Projects in Explorer, Source Control/GitHub sections on the right, and the terminal-in-editor grid.
+- Git fresh layout:
+  - `/tmp/shuvscode-issue11-git-fresh.png`
+  - after trusting the temp repo, showed right-side SCM Changes/Graph with modified `README.md`.
+- Reset after drift:
+  - `/tmp/shuvscode-issue11-reset-after-drift.png`
+  - state returned to `appliedVersion=2`, `lastApplyStatus=ok`, `unlocked=false`.
+- Unlock after restart:
+  - `/tmp/shuvscode-issue11-unlocked-restart.png`
+  - drifted single-column terminal layout stayed single-column after restart with `unlocked=true`.
+- Existing-profile skip:
+  - `/tmp/shuvscode-issue11-existing-skip.png`
+  - legacy sentinel profile recorded `skipped:existing-profile` without writing layout markers.
+- Failure path:
+  - `/tmp/shuvscode-issue11-failure-path.png`
+  - invalid `appliedVersion` showed the expected failure notification and recovered through reset.
+- Amber baseline:
+  - `/tmp/shuvscode-issue11-git-fresh.png`
+- Amber post-tune:
+  - `/tmp/shuvscode-issue12-post-main.png`
+  - `/tmp/shuvscode-issue12-post-quick-input.png`
+  - computed styles confirmed amber row gradients, amber inset, amber panel active indicator, and amber quick-input focus.
+- gh-dash launch/reuse:
+  - `/tmp/shuvscode-issue14-ghdash-launch.png`
+  - command palette launch opened a `gh-dash` terminal editor.
+  - re-running the command prompted reuse/restart with the resolved descriptor `'/usr/bin/gh' 'dash'`.
+- gh-dash command surface:
+  - `/tmp/shuvscode-issue15-command-palette-ghdash.png`
+  - showed `shuvscode: Open gh-dash Pull Requests`, `Open gh-dash`, and `Open gh-dash Issues` in the command palette.
+
+## Notes for next agent
+
+- Open GitHub issues now should only be parent/meta issues #3, #4, #5, #6, unless new work was added after this handoff.
+- Parent issues were intentionally not closed because #16 explicitly forbids closing parent issues without maintainer approval.
+- If the maintainer asks for release actions, start by refreshing `gh issue list`, `git status`, `git log --oneline -12`, and `./shuvscode-linux-x64/bin/shuvscode --version`.
+- Keep using direct Electron CDP targeting with `agent-browser --session <fresh-name> --cdp <port> ...`.
+- Old issue comments mention earlier tty/CDP blockers; those are stale. Live desktop CDP validation succeeded in this pass.
