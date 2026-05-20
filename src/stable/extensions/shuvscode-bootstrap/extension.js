@@ -154,9 +154,26 @@ async function applyEditorGrid(snapshot) {
   return { ok: failures.length === 0, results };
 }
 
+function hasWorkspaceOpen() {
+  return vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
+}
+
 function visibleTextEditorCount() {
   return vscode.window.visibleTextEditors
-    .filter(editor => editor.document?.uri?.scheme !== 'output')
+    .filter(editor => {
+      if (editor.document?.uri?.scheme === 'output') {
+        return false;
+      }
+      const path = editor.document?.uri?.path || '';
+      if (
+        path.includes('.git/COMMIT_EDITMSG') ||
+        path.includes('.git/git-rebase-todo') ||
+        path.includes('.git/MERGE_MSG')
+      ) {
+        return false;
+      }
+      return true;
+    })
     .length;
 }
 
@@ -165,6 +182,9 @@ function hunkTerminalCount() {
 }
 
 function responsiveLayoutEnabled(ctx) {
+  if (!hasWorkspaceOpen()) {
+    return false;
+  }
   const snapshot = snapshotFor(ctx);
   return snapshot.enabled !== false && snapshot.unlocked !== true;
 }
@@ -342,12 +362,14 @@ async function activate(ctx) {
     return { whenScmReady, getScmReadyState };
   }
 
-  if (layoutResult.decision.shouldApply) {
+  const shouldApply = layoutResult.decision.shouldApply && hasWorkspaceOpen();
+
+  if (shouldApply) {
     await applyOpinionatedLayout(ctx, layoutResult.snapshot, { deferMs: 2000 });
   } else if (layoutResult.snapshot.canvasScmOpened === true) {
-    await setScmReady({ ready: true, reason: `layout skipped: ${layoutResult.decision.reason}` });
+    await setScmReady({ ready: true, reason: `layout skipped: ${layoutResult.decision.reason}${!hasWorkspaceOpen() ? ' (no workspace open)' : ''}` });
   } else {
-    await setScmReady({ ready: false, reason: `layout skipped: ${layoutResult.decision.reason}`, final: true });
+    await setScmReady({ ready: false, reason: `layout skipped: ${layoutResult.decision.reason}${!hasWorkspaceOpen() ? ' (no workspace open)' : ''}`, final: true });
   }
   startResponsiveLayout(ctx);
 
