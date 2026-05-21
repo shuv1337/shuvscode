@@ -38,3 +38,10 @@ patch_check_results.json
 
 # Local release artifacts (regenerated; uploaded to GitHub Releases instead)
 dist/
+
+# Local build/toolchain caches
+.build/
+
+# Local generated project report
+project_report.html
+scripts/generate-report.js
